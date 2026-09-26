@@ -6,1189 +6,152 @@
 
 # 🎯 Simple Asset Placer
 
-**A powerful asset placement plugin for Godot 4.x designed to streamline level design workflows.**
+**A minimal asset placement plugin for Godot 4.x — drag assets into your scene and transform them with the keyboard, without leaving the viewport.**
 
-Simple Asset Placer enhances your Godot Engine experience with professional asset placement capabilities. Place new assets with precision or transform existing objects in your scene—all through an intuitive dual-mode system.
+Simple Asset Placer does two things well: a compact **asset browser dock** and an **inline keyboard transform engine** that works everywhere — while dragging from the dock, while dragging from the regular FileSystem dock, or while carrying a selection you picked up from the scene. No plugin modes, no preview objects, just the editor extended.
 
-## ✨ Key Features
+## 🚀 Version 3.0 — The Minimal Rewrite
 
-### 🎮 Dual Mode System
+A from-scratch rewrite (`addons/simpleassetplacer/`) that focuses on two things and removes everything else:
 
-- **Placement Mode**: Intuitive asset placement with real-time preview and precise positioning
-  - *Reference: `core/mode_state_machine.gd` - Mode.PLACEMENT*
-- **Transform Mode**: Modify existing Node3D objects with the same familiar controls
-  - *Reference: `core/mode_state_machine.gd` - Mode.TRANSFORM*
-  - *Default hotkey: TAB (customizable)*
+- **Inline keyboard transforms** — Rotate (`X`/`Y`/`Z`), move (`W`/`A`/`S`/`D` + `Q`/`E` height) and scale (`L`/`K`) the selected Node3D nodes directly, even while dragging an asset from the FileSystem dock. No plugin mode, no preview object — just the editor extended. Every key and step value is editable in Godot's own **Editor Settings** under `simple_asset_placer/`.
+- **Compact asset browser dock** — thumbnails straight from the engine's `EditorResourcePreview` pipeline, live search, a grouped folder list, native drag-and-drop, and double-click placement with full undo.
 
-### 🔄 Asset Cycling
+Both the dock and the keyboard transforms are configured in Godot's **Editor Settings** under `simple_asset_placer/`. See the [changelog](CHANGELOG.md) for details.
 
-- Browse and switch between assets directly in the viewport using `[` and `]` keys
-  - *Reference: `ui/modellib_browser.gd` - cycle_to_next_asset(), cycle_to_previous_asset()*
-- Works with tap or hold for rapid browsing
-- Respects current filters (categories, search, favorites)
-- Auto-scrolls browser to show active asset
+## ✨ Features
 
-### � Parent Placement Control
+### 📂 Asset Browser Dock
 
-- **Flexible Parent Node Selection**: Choose where assets are placed in your scene hierarchy
-  - **Root Mode**: Place as children of scene root (default behavior)
-  - **Selected Mode**: Place as children of currently selected node
-  - **Custom Mode**: Place at a specific node path (e.g., `World/Objects`)
-  - **Auto Mode**: Automatically create/reuse a container node for organized asset management
-  - *Reference: `managers/utility_manager.gd` - get_target_parent_node()*
-- **Scene Tree Context Menu**: Right-click any node to set it as the placement parent
-  - *Reference: `context_menu/scene_tree_context_menu.gd`*
-- **Node Path Browser**: Visual node selector for custom parent paths
-  - *Reference: `settings/settings_ui_builder.gd`*
+- **Grouped list view** — folders become collapsible group headers, assets listed underneath; one clean view for the whole project
+- **Engine-native thumbnails** — previews come from Godot's own `EditorResourcePreview` pipeline
+- **Live search** — filter assets across the entire tree as you type
+- **Native drag & drop** — drag a thumbnail straight into the 3D viewport; double-click places it in front of the camera with full undo
+- **Plays well with the FileSystem dock** — assets dragged from the regular FileSystem get the same inline transform support
 
-### �🏷️ Asset Organization
+### ⌨️ Inline Keyboard Transforms
 
-- **Automatic Folder Categories**: Extracts categories from your project structure
-  - *Reference: `managers/category_manager.gd` - folder_categories*
-- **Custom Tags**: Create and manage custom tags via `.assetcategories` JSON file
-  - *Reference: `managers/category_manager.gd` - custom_tags*
-- **Favorites**: Quick access to frequently used assets
-  - *Reference: `managers/category_manager.gd` - EDITOR_SETTINGS_FAVORITES_KEY*
-- **Recent Assets**: Automatic tracking of last 20 placed assets
-  - *Reference: `managers/category_manager.gd` - MAX_RECENT_ASSETS = 20*
+- **Works while dragging** — grab an asset (dock *or* FileSystem) and rotate/move/scale the preview before you drop it
+- **Pick-up mode** — press `Tab` to grab the current selection; it follows your cursor over surfaces, transform it in place, confirm with `Tab`/`Enter`/`Left Mouse` or cancel with `Esc`/`Right Mouse`
+- **Quick duplicate stamp** — press `V` to duplicate the selection and carry the copies; click to stamp them, `V` again to stamp the placed copies, `Esc`/`Right Mouse` to discard
+- **Surface snapping** — the carried nodes raycast onto the surface under your cursor; grid snapping follows the editor's **Use Snap** toggle (hold `Ctrl` to temporarily invert, exactly like the engine)
+- **Snap to floor** — `PageDown` while carrying drops the selection onto the surface below and locks its height until you adjust height again
+- **Self-collision safe** — the pick-up ray ignores the carried node's own collision (including CSG collision bodies)
+- **Shortcut shield** — editor shortcuts (Ctrl+S save, Ctrl+X cut, …) are captured while a transform key is active, so your transforms never save or cut the scene
+- **Undo batching** — every drag/pick-up/duplicate session is a single undo step; stamped duplicates collapse into one entry per stamp
+- **QWERTZ-friendly** — keys are matched by keycap label (logical keycodes), so `Y`/`Z` behave correctly on German layouts
 
-### ⌨️ Flexible Input System
+## 🎮 Quick Start
 
-- All hotkeys support modifier combinations (CTRL, ALT, SHIFT, META)
-  - *Reference: `managers/input_handler.gd` - modifier key detection*
-- Compatible with international keyboard layouts
-- Full key binding customization via Settings tab
-  - *Reference: `ui/placement_settings.gd` - key configuration*
-
-### 🎯 Precision Placement
-
-- **Grid Snapping**: Snap to customizable grid with offset support
-  - *Reference: `utils/transform_math.gd` - snap functions, `managers/grid_manager.gd`*
-- **Surface Alignment**: Automatically align rotation to surface normals
-  - *Reference: `managers/rotation_manager.gd` - align_with_surface_normal()*
-- **Collision-Based Placement**: Raycast positioning for natural object placement
-  - *Reference: `placement/collision_placement_strategy.gd`*
-- **Plane-Based Placement**: Place on virtual planes for architectural work
-  - *Reference: `placement/plane_placement_strategy.gd`*
-
-### 🎨 Visual Feedback
-
-- Real-time preview mesh with position, rotation, and scale visualization
-  - *Reference: `managers/preview_manager.gd`*
-- Visual grid overlay during placement
-  - *Reference: `managers/overlay_manager.gd` - show_grid_overlay()*
-- Status information and transform values displayed in viewport
-  - *Reference: `ui/status_overlay_control.gd`*
-
-### ⚡ Performance & Quality
-
-- Asynchronous asset scanning for non-blocking discovery
-  - *Reference: `thumbnails/asset_scanner.gd`*
-- Thumbnail caching system
-  - *Reference: `thumbnails/thumbnail_generator.gd`, `thumbnails/thumbnail_queue_manager.gd`*
-- Modular architecture with service-based dependency management
-  - *Reference: `core/service_registry.gd`, `core/service_registry_builder.gd`*
-
-## 🚀 Quick Start
-
-### **Installation**
+### Installation
 
 1. Download or clone this repository
-2. Copy the `addons/simpleassetplacer/` folder to your project's `addons/` directory
-3. Enable "SimpleAssetPlacer" in **Project → Project Settings → Plugins**
-4. The "Asset Placer" dock appears automatically in the right panel of the editor
+2. Copy the `addons/simpleassetplacer/` folder into your project's `addons/` directory
+3. Enable **Simple Asset Placer** in **Project → Project Settings → Plugins**
+4. The **Asset Browser** dock appears in the right panel of the editor
 
-*Note: Make sure to copy the entire `addons/simpleassetplacer/` folder structure as shown in the Project Structure section below.*
-
-### **Basic Usage - Placement Mode**
+### Place an asset
 
 ```
-1. Open the Asset Placer dock (right panel).
-2. Switch to the "3D Models" or "MeshLibraries" tab.
-3. Click any asset thumbnail to start placement mode.
-4. Move your mouse in the 3D viewport to position the preview.
-5. Use Q/E keys (or mouse wheel) to rotate the object.
-6. Use [ and ] keys to cycle through different assets without leaving the viewport.
-7. Left-click to place the asset in your scene.
-8. ESC to exit placement mode.
+1. Drag a thumbnail from the Asset Browser dock (or a file from the FileSystem
+   dock) into the 3D viewport.
+2. The preview follows your cursor and snaps to surfaces.
+3. While dragging, transform it inline:  X/Y/Z rotate · W/A/S/D move ·
+   Q/E height · L/K scale · Ctrl/Alt/Shift change step size & direction.
+4. Release the mouse to place the asset (one undo step).
 ```
 
-<div align="center">
-  <img src="branding/gifs/placement_mode.gif" alt="Placement Mode Demo" width="80%"/>
-  <p><i>Placement Mode in action - selecting, positioning, and placing assets</i></p>
-</div>
-
-### **Advanced Usage - Transform Mode**
+### Move & transform placed nodes
 
 ```
-1. Select any Node3D object(s) in the scene tree.
-2. Press TAB (or your configured key) to enter Transform Mode.
-3. Use mouse movement to reposition the object(s).
-4. Use Q/E for rotation, W/A/S/D for precise positioning.
-5. All placement controls work in Transform Mode.
-6. Left-click to confirm changes, or ESC to cancel and restore original state.
+1. Select any Node3D node(s) in the scene tree.
+2. Press Tab — the selection is picked up and follows your cursor.
+3. Transform it with the same keys (rotation, movement, height, scale,
+   snapping, snap-to-floor).
+4. Confirm with Tab, Enter or Left Mouse — Esc or Right Mouse cancels
+   and restores the original transforms.
 ```
 
-<div align="center">
-  <img src="branding/gifs/transform_mode.gif" alt="Transform Mode Demo" width="80%"/>
-  <p><i>Transform Mode - modifying existing objects in the scene</i></p>
-</div>
-
-### **Asset Browser Interface**
-
-<div align="center">
-  <img src="branding/screnshoots/asset_browser.png" alt="3D Models Asset Browser" width="80%"/>
-  <p><i>3D Models Browser - Browse, search, and organize your 3D assets</i></p>
-</div>
-
-<div align="center">
-  <img src="branding/screnshoots/meshlib_browser.png" alt="MeshLibrary Browser" width="80%"/>
-  <p><i>MeshLibrary Browser - Access GridMap mesh items</i></p>
-</div>
-
-### **Essential Controls**
-
-- **Left-Click**: Place asset (Placement Mode) / Confirm changes (Transform Mode)
-- **TAB**: Enter/exit Transform Mode (customizable)
-- **[ / ]**: Cycle to previous/next asset during placement (customizable)
-- **Mouse Movement**: Position object in 3D space via raycasting
-- **Q / E**: Rotate around Y-axis
-- **X / Y / Z**: Rotate around respective axes (customizable)
-- **Mouse Wheel**: Fine rotation control
-- **W/A/S/D**: Manual position adjustments (camera-relative)
-- **Page Up/Down**: Scale up/down (customizable)
-- **CTRL**: Fine adjustment mode (smaller increments)
-- **ALT**: Large adjustment mode (bigger increments)
-- **SHIFT**: Reverse direction for height adjustments
-- **ESC**: Cancel and exit current mode
-
-## 🔄 Asset Cycling - Stay in Your Flow
-
-Browse and switch between assets without ever leaving the 3D viewport (introduced in v1.2.0).
-
-### **How Asset Cycling Works**
-
-While in Placement Mode with a preview visible:
-
-- **Press `]`** to cycle to the next asset (*Reference: `ui/modellib_browser.gd` - cycle_to_next_asset()*)
-- **Press `[`** to cycle to the previous asset (*Reference: `ui/modellib_browser.gd` - cycle_to_previous_asset()*)
-- **Tap once** to switch to the next/previous asset
-- **Hold the key** to rapidly browse through all assets
-- Preview updates instantly - no interruption to your workflow!
-
-### **Smart Context-Aware Cycling**
-
-Cycling respects your current view and filters:
-
-- ✅ **Filtered Categories**: Cycle only through assets in the selected category
-- ✅ **Search Results**: Cycle through search matches
-- ✅ **Favorites**: Cycle through favorited assets only
-- ✅ **Custom Tags**: Cycle through tagged asset groups
-- ✅ **Auto-scroll**: Browser automatically scrolls to show current asset
-- ✅ **Wrap-around**: Last asset → first asset seamlessly
-
-### **Works Everywhere**
-
-- ✅ **3D Models Tab**: Cycle through .fbx, .obj, .gltf, etc.
-- ✅ **MeshLibrary Tab**: Cycle through GridMap mesh items (*Reference: `ui/meshlib_browser.gd`*)
-- ✅ **Both Tap and Hold**: Flexible input for your workflow
-
-### **International Keyboard Support**
-
-If your keyboard requires modifier keys for brackets:
-
-1. Go to **Settings → Control Keys**
-2. Click **"Cycle Next Asset"** button
-3. Press your bracket combination (e.g., `CTRL+ALT+9`)
-4. Click **"Cycle Previous Asset"** button  
-5. Press your other bracket (e.g., `CTRL+ALT+8`)
-6. Done! Cycling now works perfectly with your layout
-
-## 🎯 Parent Placement Control
-
-Control where assets are placed in your scene hierarchy for better organization and workflow efficiency (introduced in v2.1.0).
-
-### **How Parent Placement Works**
-
-By default, assets are placed as children of the scene root. With Parent Placement Control, you can:
-
-- Place assets under a selected node
-- Use a custom node path for consistent placement
-- Auto-create container nodes for organized scene structure
-- Set parent via Scene Tree context menu (right-click any node)
-
-### **Parent Placement Modes**
-
-Configure the placement mode in **Settings → Basic → Parent Placement Mode**:
-
-| Mode       | Description                                                                 | Use Case                                    |
-|------------|-----------------------------------------------------------------------------|---------------------------------------------|
-| **root**   | Place as children of scene root (default)                                   | Simple scenes, quick prototyping            |
-| **selected** | Place as children of currently selected node                               | Manual organization, placing in specific areas |
-| **custom** | Place at a specific node path (e.g., `World/Objects`)                       | Consistent structure across team projects   |
-| **auto**   | Auto-create/reuse a container node with customizable name                   | Automatic organization, clean hierarchy     |
-
-*Reference: `utils/plugin_constants.gd` - PARENT_MODE_* constants, `managers/utility_manager.gd` - get_target_parent_node()*
-
-### **Quick Parent Selection via Context Menu**
-
-The fastest way to set a placement parent:
+### Stamp duplicates
 
 ```
-1. Right-click any node in the Scene Tree
-2. Select "Set as Asset Placement Parent"
-3. Parent mode automatically switches to "selected"
-4. All placed assets now go under that node
-5. Visual feedback confirms the parent is set
+1. Select a node and press V — a duplicate is created and picked up.
+2. Left Mouse (or Enter/Tab) stamps the copy in place; press V again to
+   stamp the placed copies for a rapid chain of variations.
+3. Esc or Right Mouse deletes the copies and restores the original.
 ```
 
-*Reference: `context_menu/scene_tree_context_menu.gd`*
+## ⌨️ Controls
 
-### **Custom Parent Path Configuration**
+All keys and step sizes live in **Editor → Editor Settings → `simple_asset_placer/`** — every action below is remappable.
 
-For team projects or consistent scene structures:
+| Action | Default | Description |
+|--------|---------|-------------|
+| Pick up selection | `Tab` | Grab the selection; it follows the cursor over surfaces |
+| Confirm / drop | `Tab` `Enter` `LMB` | Drop carried nodes at the current position |
+| Cancel pickup | `Esc` `RMB` | Restore the original transforms |
+| Quick duplicate | `V` | Duplicate selection and carry the copies (stamping) |
+| Rotate | `X` `Y` `Z` | Rotate around the X / Y / Z axis |
+| Move | `W` `A` `S` `D` | Move on the horizontal plane |
+| Height | `Q` `E` | Move up / down |
+| Scale | `L` `K` | Scale up / down |
+| Snap to floor | `PageDown` | While carrying: drop onto the surface below and lock height |
+| Fine modifier | `Ctrl` | Small step (also inverts the snap toggle, engine-style) |
+| Large modifier | `Alt` | Big step |
+| Reverse modifier | `Shift` | Inverts the direction of the current key |
 
-**Setting Custom Path:**
+## ⚙️ Editor Settings
 
-```
-1. Go to Settings → Basic → Parent Placement Mode
-2. Select "custom" from dropdown
-3. Custom Parent Path field appears below
-4. Enter node path (e.g., "World/Environment/Props")
-5. Click "..." browse button to select from scene tree
-6. Or select node in scene tree, then click browse button
-```
+Everything is configured under **Editor → Editor Settings → `simple_asset_placer/`**:
 
-**Path Validation:**
+- **Keys** — one setting per action (`*_key`), free-text like `Tab`, `Enter`, `F`, `PageDown`, or single letters
+- **Steps** — `rotation_step_degrees` (15°), `move_step` (0.5), `scale_step_factor` (0.1) and their fine/large variants
+- **Snap** — `snap_increment`: `0` follows the editor's **Use Snap** toggle with its grid size, `> 0` forces a fixed increment, `< 0` disables snapping while carrying
 
-- ✅ Real-time validation shows if path exists
-- ✅ Green checkmark (✓) = valid path
-- ⚠️ Yellow warning = path not found (will use root as fallback)
-- Tooltips show current validation status
+## 📁 Supported Asset Formats
 
-*Reference: `settings/settings_ui_builder.gd` - _validate_node_path_tooltip(), _on_browse_node_path()*
+The dock lists scene and model files that Godot's import system can preview:
 
-### **Auto-Created Parent Container**
+`.tscn` · `.scn` · `.res` · `.tres` · `.glb` · `.gltf` · `.fbx` · `.obj` · `.dae`
 
-Perfect for keeping your scene organized automatically:
-
-**How Auto Mode Works:**
-
-```
-1. Go to Settings → Basic → Parent Placement Mode
-2. Select "auto" from dropdown
-3. Set "Auto-Created Parent Name" (default: "PlacedAssets")
-4. First asset placed creates a new Node3D container with that name
-5. Subsequent assets reuse the existing container
-6. Container automatically added to scene root if not present
-```
-
-**Benefits:**
-
-- 🗂️ Automatic scene organization without manual setup
-- 🔄 Consistent across multiple placement sessions
-- 🧹 All placed assets grouped together for easy management
-- 📦 Single container for bulk operations (move, hide, delete)
-
-### **Parent Placement During Modes**
-
-**Placement Mode:**
-
-- Parent determined when entering mode
-- Stays consistent for entire placement session
-- All assets placed go to the same parent
-- Change parent by exiting and re-entering mode
-
-**Transform Mode:**
-
-- Existing objects retain their current parent
-- No parent changes during transform operations
-- Parent settings only affect newly placed assets
-
-### **Conditional Settings UI**
-
-Settings UI intelligently shows/hides related options:
-
-- **Custom Parent Path** field: Only visible when mode = "custom"
-- **Auto-Created Parent Name** field: Only visible when mode = "auto"
-- Settings UI updates dynamically when mode changes
-
-*Reference: `settings/settings_definition.gd` - SettingMeta.depends_on, `settings/settings_ui_builder.gd` - _update_dependent_visibility()*
-
-### **Workflow Examples**
-
-**Example 1: Organizing Props by Area**
-
-```
-Scene Structure:
-├── World
-│   ├── TownCenter
-│   ├── Forest
-│   └── Castle
-
-Workflow:
-1. Select "TownCenter" node in Scene Tree
-2. Right-click → "Set as Asset Placement Parent"
-3. Place market stalls, benches, etc.
-4. Select "Forest" node
-5. Right-click → "Set as Asset Placement Parent"
-6. Place trees, rocks, etc.
-→ Assets automatically organized by location
-```
-
-**Example 2: Team Project with Standard Structure**
-
-```
-Team Convention:
-- All environment assets → World/Environment
-- All props → World/Props  
-- All characters → World/Characters
-
-Setup:
-1. Settings → Parent Placement Mode → "custom"
-2. Custom Parent Path: "World/Environment"
-3. Place terrain, vegetation, lighting
-4. Change to "World/Props" when placing props
-→ Consistent structure across all team members
-```
-
-**Example 3: Auto-Organization for Rapid Prototyping**
-
-```
-Setup:
-1. Settings → Parent Placement Mode → "auto"
-2. Auto-Created Parent Name: "Prototype_Assets"
-3. Start placing assets rapidly
-→ Plugin creates "Prototype_Assets" container
-→ All assets grouped automatically
-→ Easy to delete/hide entire prototype later
-```
-
-### **Best Practices**
-
-- 🎯 **Use 'selected' mode** for organic, area-based placement
-- 📐 **Use 'custom' mode** for team projects with defined structure
-- 🔄 **Use 'auto' mode** for prototyping and rapid iteration
-- 🏗️ **Use 'root' mode** for simple scenes or when hierarchy doesn't matter
-- 💡 **Set parent before entering Placement Mode** for consistent sessions
-- 🗂️ **Organize parent nodes** in scene tree before using custom paths
-
-## ⌨️ Controls & Key Bindings
-
-### **Core Controls**
-
-| Action               | Default Key      | Customizable | Description                                    |
-|----------------------|------------------|--------------|------------------------------------------------|
-| Transform Mode       | TAB              | ✅           | Enter/exit transform mode for selected objects |
-| Place/Confirm        | Left-Click       | ❌           | Place asset or confirm transform changes       |
-| Cancel               | ESC              | ✅           | Exit mode without placing/saving changes       |
-| Cycle Next Asset     | ]                | ✅           | Switch to next asset in filtered view          |
-| Cycle Previous Asset | [                | ✅           | Switch to previous asset in filtered view      |
-
-### **Rotation Controls**
-
-| Action               | Default Key      | Customizable | Description                                    |
-|----------------------|------------------|--------------|------------------------------------------------|
-| Rotate Y-Axis        | Q / E            | ✅           | Rotate around Y-axis (yaw)                     |
-| Rotate X-Axis        | X                | ✅           | Rotate around X-axis (pitch)                   |
-| Rotate Z-Axis        | Z                | ✅           | Rotate around Z-axis (roll)                    |
-| Fine Rotation        | Mouse Wheel      | ❌           | Precise rotation control                       |
-| Reset Rotation       | T                | ✅           | Reset all rotation offsets to zero             |
-
-### **Position Controls**
-
-| Action               | Default Key      | Customizable | Description                                    |
-|----------------------|------------------|--------------|------------------------------------------------|
-| Move Forward         | W                | ✅           | Move along camera forward axis                 |
-| Move Backward        | S                | ✅           | Move along camera back axis                    |
-| Move Left            | A                | ✅           | Move along camera left axis                    |
-| Move Right           | D                | ✅           | Move along camera right axis                   |
-| Height Up            | Q (when rotated) | ✅           | Increase height offset                         |
-| Height Down          | E (when rotated) | ✅           | Decrease height offset                         |
-| Reset Height         | R                | ✅           | Reset height offset to zero                    |
-| Reset Position       | G                | ✅           | Reset position offsets to zero                 |
-
-### **Scale Controls**
-
-| Action               | Default Key      | Customizable | Description                                    |
-|----------------------|------------------|--------------|------------------------------------------------|
-| Scale Up             | Page Up          | ✅           | Increase scale multiplier                      |
-| Scale Down           | Page Down        | ✅           | Decrease scale multiplier                      |
-| Reset Scale          | Home             | ✅           | Reset scale multiplier to 1.0                  |
-
-### **Modifier Keys**
-
-| Modifier             | Effect                                                                                    |
-|----------------------|-------------------------------------------------------------------------------------------|
-| **CTRL**             | Fine adjustment mode (10% of base increment for rotation/scale/position)                  |
-| **ALT**              | Large adjustment mode (10x base increment for rotation/scale/position)                    |
-| **SHIFT**            | Reverse direction for height adjustments (Q/E become E/Q)                                 |
-
-### **Controls in Action**
-
-<div align="center">
-  <img src="branding/gifs/position.gif" alt="Position Controls Demo" width="32%"/>
-  <img src="branding/gifs/rotation.gif" alt="Rotation Controls Demo" width="32%"/>
-  <img src="branding/gifs/scale.gif" alt="Scale Controls Demo" width="32%"/>
-  <p><i>Position, Rotation, and Scale controls demonstrated</i></p>
-</div>
-
-### **Advanced Key Binding Features**
-
-- **Universal Modifier Support**: Use CTRL, ALT, SHIFT, META (Windows/Command key) alone or in combinations with ANY keybind.
-- **International Keyboard Layouts**: Configure keys like `CTRL+ALT+8` for brackets on German keyboards, `ALT+5` on French keyboards, etc.
-- **Conflict Prevention**: Plugin intercepts input at the highest priority to avoid conflicts with Godot's built-in shortcuts.
-- **Per-Action Customization**: Every action can be remapped independently via the Settings tab.
-- **Visual Feedback**: Settings panel shows current bindings and captures full key combinations including modifiers during key assignment.
-
-## 🏷️ Category & Organization System
-
-Simple Asset Placer includes a powerful category system that helps you organize and quickly find assets in large projects.
-
-### **Automatic Folder-Based Categories**
-
-The plugin automatically detects categories based on your folder structure:
-
-```
-res://assets/
-├── props/          → "Props" category
-│   ├── outdoor/    → "Props > Outdoor" 
-│   └── indoor/     → "Props > Indoor"
-├── vegetation/     → "Vegetation" category
-└── buildings/      → "Buildings" category
-```
-
-**Features:**
-
-- ✅ **Zero Configuration**: Works automatically with your existing folder structure
-- ✅ **Hierarchical Display**: Shows nested folder relationships
-- ✅ **Instant Filtering**: Select any folder category to see matching assets
-
-### **Custom Tags System**
-
-Add custom tags to assets for flexible organization:
-
-**Creating Tags:**
-
-1. Right-click any asset thumbnail
-2. Select a recent tag or choose "+ New Tag..."
-3. Tags are saved in `.assetcategories` file
-
-**Tag File Format (`.assetcategories`):**
-
-```json
-{
-  "tags": {
-    "barrel_01": ["props", "outdoor", "medieval"],
-    "tree_pine": ["vegetation", "forest", "nature"],
-    "wall_stone": ["buildings", "medieval", "outdoor"]
-  },
-  "tag_usage": {
-    "props": 3,
-    "outdoor": 2,
-    "medieval": 2
-  },
-  "recently_used": ["props", "outdoor"]
-}
-```
-
-**Tag Features:**
-
-- 🏷️ **Multiple Tags per Asset**: Assign unlimited tags to each asset
-- 🔍 **Quick Access**: Recently used tags appear first in context menu
-- 📊 **Usage Tracking**: Most-used tags prioritized automatically
-- 💾 **Persistent Storage**: Tags saved in JSON format, easy to edit/version control
-
-### **Favorites & Recent Assets**
-
-**Favorites:**
-
-- ⭐ Right-click any asset → "Add to Favorites"
-- Quick access filter at top of category dropdown
-- Persists across sessions in EditorSettings
-- Perfect for frequently used assets
-
-**Recent Assets:**
-
-- 🕐 Automatically tracks last 20 used assets
-- Shows in dedicated "Recent" filter
-- Updates when you place assets
-- Great for iterative level design
-
-### **Visual Category Indicators**
-
-Assets display color-coded badges on thumbnails:
-
-- 🟡 **Gold Star**: Favorited asset
-- 🟢 **Green Badge**: Custom tag
-- 🔵 **Blue Badge**: Folder category
-
-**Enhanced Tooltips:**
-Hover over any asset to see:
-
-- Asset name and path
-- Favorite/Recent status
-- All folder categories
-- All custom tags
-
-### **Category Filtering**
-
-**Multi-Criteria Filtering:**
-Combine filters for precise asset discovery:
-
-1. **Text Search**: Filter by asset name
-2. **Category**: Filter by folder or custom tag
-3. **File Type**: Filter by format (FBX, OBJ, etc.)
-
-**Filter Workflow:**
-
-```
-1. Select category from dropdown (e.g., "Props")
-2. Narrow with file type filter (e.g., "FBX Files")
-3. Use search box for specific names
-→ Results show only matching assets
-```
-
-### **Context Menu Actions**
-
-Right-click any asset for quick actions:
-
-- 📁 **View Folder Categories**: See auto-detected categories
-- 🕐 **Recent Tags**: Quick access to last 5 used tags
-- 🏷️ **All Tags**: Browse all available tags
-- ➕ **New Tag**: Create new custom tag
-- ⭐ **Add to Favorites**: Mark as favorite
-
-### **Advanced Tag Management Dialog**
-
-Click the "Manage Tags..." button next to the category filter for powerful bulk operations:
-
-<div align="center">
-  <img src="branding/screnshoots/afvance_tag_management_dialog.png" alt="Advanced Tag Management Dialog" width="80%"/>
-  <p><i>Advanced Tag Management Dialog - Bulk tag operations and organization</i></p>
-</div>
-
-**Features:**
-
-- 📋 **Asset Table**: See all assets with their current tags
-- 🔍 **Dual Search**: Filter assets and tags independently
-- ✅ **Multi-Select**: Ctrl+Click or Shift+Click to select multiple assets
-- ➕ **Bulk Add Tags**: Add selected tags to multiple assets at once
-- ➖ **Bulk Remove Tags**: Remove tags from multiple assets
-- 📊 **Live Statistics**: Real-time overview of tagged/untagged assets and tag usage
-- ✏️ **Rename Tags**: Rename tags across all assets
-- 🔀 **Merge Tags**: Combine multiple tags into one
-- 🗑️ **Delete Tags**: Remove unused tags from the system
-
-**Tag Management Workflow:**
-
-```
-1. Click "Manage Tags..." button
-2. Select multiple assets (Ctrl+Click)
-3. Select tag(s) from the right panel
-4. Click "Add to Selected" or "Remove from Selected"
-5. Use Rename/Merge/Delete for tag maintenance
-→ Changes auto-save and refresh the asset grid
-```
-
-**Use Cases:**
-
-- 🎯 **Batch Tagging**: Import 50 assets → Select all → Add "medieval" tag
-- 🧹 **Tag Cleanup**: Merge "outdoor" and "exterior" into one tag
-- 📊 **Audit Tags**: See which tags are most used, clean up duplicates
-- 🔄 **Reorganize**: Rename tags to match new naming conventions
-
-### **Best Practices**
-
-**Folder Organization:**
-```
-✅ Good Structure:
-res://assets/
-├── environment/
-│   ├── nature/
-│   └── urban/
-├── characters/
-└── props/
-
-❌ Avoid Flat Structure:
-res://assets/
-├── barrel1.fbx
-├── tree1.fbx
-└── (100+ files)
-```
-
-**Tag Naming Conventions:**
-
-- Use lowercase for consistency
-- Keep tags concise (1-2 words)
-- Use descriptive names: "medieval", "outdoor", "destructible"
-- Avoid overly specific tags
-
-**Workflow Tips:**
-
-- 🏷️ Tag assets as you import them
-- ⭐ Favorite assets you use most often
-- 🔍 Use text search + category filter together
-- 📊 Review tag usage to identify common patterns
-
-## ⚙️ Settings & Customization
-
-Access all settings via the **Settings** tab in the Asset Placer dock.
-
-### **Placement Settings**
-
-#### **Snap & Alignment Options**
-
-- **Snap to Ground**: Raycast-based surface snapping for natural object placement
-- **Align with Surface Normal**: Automatically align object rotation to match surface angle
-- **Grid Snap Enabled**: Snap positions to a customizable grid
-- **Snap Step**: Grid size for X/Z axis snapping (default: 1.0)
-- **Snap Y Enabled**: Enable height (Y-axis) snapping to a grid
-- **Snap Y Step**: Grid size for Y-axis snapping (default: 1.0)
-- **Snap Offset**: Global grid offset from world origin (Vector3)
-- **Show Grid**: Display visual grid overlay during placement/transform
-- **Grid Extent**: Size of grid visualization in world units (default: 20.0)
-
-#### **Snap Center Options**
-
-Control which part of the object is used for snapping:
-
-- **Snap Center X**: Use object center for X-axis snapping
-- **Snap Center Y**: Use object center for Y-axis snapping
-- **Snap Center Z**: Use object center for Z-axis snapping
-
-#### **Parent Placement Settings**
-
-- **Parent Placement Mode**: Choose where assets are placed in the scene hierarchy
-  - `root`: Place as children of scene root (default)
-  - `selected`: Place as children of currently selected node
-  - `custom`: Place at a custom node path
-  - `auto`: Auto-create/reuse a container node
-- **Custom Parent Path**: Node path for custom mode (e.g., `World/Objects`)
-  - Only visible when Parent Placement Mode is set to `custom`
-  - Includes browse button (`...`) for visual node selection
-  - Real-time validation with visual feedback
-- **Auto-Created Parent Name**: Name for auto-created container (default: `PlacedAssets`)
-  - Only visible when Parent Placement Mode is set to `auto`
-  - Container created automatically on first asset placement
-
-#### **Other Options**
-
-- **Random Rotation**: Apply random Y-axis rotation on placement
-- **Scale Multiplier**: Base scale applied to all placed objects
-- **Add Collision**: Automatically add collision shapes (StaticBody3D) to placed objects
-- **Group Instances**: Parent all placed instances under a common node
-
-### **Reset Behavior**
-
-Control what gets reset when exiting modes:
-
-- **Reset Height on Exit**: Return height offset to zero
-- **Reset Scale on Exit**: Return scale multiplier to 1.0
-- **Reset Rotation on Exit**: Clear all rotation offsets
-- **Reset Position on Exit**: Clear manual position offsets
-
-### **Adjustment Increments**
-
-Fine-tune the step sizes for all transformations:
-
-**Rotation:**
-
-- Base Increment: 15° (default)
-- Fine Increment (CTRL): 5°
-- Large Increment (ALT): 90°
-
-**Scale:**
-
-- Base Increment: 0.1
-- Fine Increment (CTRL): 0.01
-- Large Increment (ALT): 0.5
-
-**Height:**
-
-- Base Step: 0.1
-- Fine Step (CTRL): 0.01
-- Large Step (ALT): 1.0
-
-**Position:**
-
-- Base Step: 0.1
-- Fine Step (CTRL): 0.01
-- Large Step (ALT): 1.0
-
-### **Key Binding Customization**
-
-Every key can be remapped via the Settings tab:
-
-1. Click the key button you want to change
-2. Press the desired key combination (with or without modifiers)
-3. Settings save automatically to EditorSettings
-
-### **Cache Management**
-
-- **Clear Thumbnail Cache**: Remove all cached thumbnails to free memory or regenerate corrupted previews
-
-### **Persistence**
-
-- Settings persist per-project in EditorSettings
-- `.assetcategories` file stores custom tags (JSON format)
-- Favorites and recent assets stored in EditorSettings for each project
-
-## 🏗️ Architecture
-
-Simple Asset Placer uses a modular, service-based architecture for maintainability and extensibility.
-
-### **Core Systems**
-
-- **ServiceRegistry** (*`core/service_registry.gd`*): Centralized dependency management and service lifecycle
-- **ModeStateMachine** (*`core/mode_state_machine.gd`*): Mode state tracking (NONE, PLACEMENT, TRANSFORM)
-- **PlacementModeController** (*`core/placement_mode_controller.gd`*): Coordinates placement mode operations
-- **InputProcessor** (*`core/input_processor.gd`*): High-level input orchestration
-- **KeyboardInputProcessor** (*`core/keyboard_input_processor.gd`*): Keyboard input processing
-
-### **Manager Systems**
-
-- **InputHandler** (*`managers/input_handler.gd`*): Low-level input detection with edge detection
-- **PositionManager** (*`managers/position_manager.gd`*): 3D spatial calculations and raycasting
-- **RotationManager** (*`managers/rotation_manager.gd`*): Rotation offsets and surface alignment
-- **ScaleManager** (*`managers/scale_manager.gd`*): Scale multiplier calculations
-- **PreviewManager** (*`managers/preview_manager.gd`*): Real-time preview mesh rendering
-- **OverlayManager** (*`managers/overlay_manager.gd`*): Visual feedback and UI overlays
-- **GridManager** (*`managers/grid_manager.gd`*): Grid snapping and visualization
-- **CategoryManager** (*`managers/category_manager.gd`*): Asset organization and metadata
-
-### **Placement Strategies**
-
-- **PlacementStrategyService** (*`placement/placement_strategy_service.gd`*): Strategy coordinator
-- **CollisionPlacementStrategy** (*`placement/collision_placement_strategy.gd`*): Raycast-based placement
-- **PlanePlacementStrategy** (*`placement/plane_placement_strategy.gd`*): Virtual plane placement
-
-### **UI Components**
-
-- **AssetPlacerDock** (*`ui/asset_placer_dock.gd`*): Main dock interface
-- **ModelLibraryBrowser** (*`ui/modellib_browser.gd`*): 3D model asset browser
-- **MeshLibraryBrowser** (*`ui/meshlib_browser.gd`*): MeshLibrary resource browser
-- **PlacementSettings** (*`ui/placement_settings.gd`*): Settings UI and configuration
-- **TagManagementDialog** (*`ui/tag_management_dialog.gd`*): Bulk tag operations
-
-### **Support Systems**
-
-- **SettingsManager** (*`settings/settings_manager.gd`*): Configuration management
-- **ThumbnailGenerator** (*`thumbnails/thumbnail_generator.gd`*): Asset preview generation
-- **AssetScanner** (*`thumbnails/asset_scanner.gd`*): Asset discovery and validation
-- **ErrorHandler** (*`utils/error_handler.gd`*): Error reporting
-- **PluginLogger** (*`utils/plugin_logger.gd`*): Structured logging
+Assets must contain mesh or scene data to produce a draggable instance. Surface placement raycasts against collision — for Terrain3D, enable its collision option so the ray finds the ground.
 
 ## 📁 Project Structure
 
-The plugin follows a modular architecture with clear separation of concerns:
-
 ```
 addons/simpleassetplacer/
-├── plugin.cfg                           # Plugin metadata (version 1.4.1)
-├── simpleassetplacer.gd                 # Main plugin entry point
-│
-├── core/                                # Core systems
-│   ├── service_registry.gd              # Dependency management
-│   ├── service_registry_builder.gd      # Service initialization
-│   ├── mode_state_machine.gd            # Mode state tracking
-│   ├── placement_mode_controller.gd     # Placement coordination
-│   ├── input_processor.gd               # High-level input
-│   └── keyboard_input_processor.gd      # Keyboard handling
-│
-├── managers/                            # Manager systems
-│   ├── input_handler.gd                 # Input detection
-│   ├── position_manager.gd              # Position calculations
-│   ├── rotation_manager.gd              # Rotation management
-│   ├── scale_manager.gd                 # Scale management
-│   ├── preview_manager.gd               # Preview rendering
-│   ├── overlay_manager.gd               # Visual overlays
-│   ├── grid_manager.gd                  # Grid snapping
-│   ├── category_manager.gd              # Asset organization
-│   └── utility_manager.gd               # Scene utilities
-│
-├── placement/                           # Placement strategies
-│   ├── placement_strategy.gd            # Base strategy
-│   ├── placement_strategy_service.gd    # Strategy service
-│   ├── collision_placement_strategy.gd  # Raycast placement
-│   └── plane_placement_strategy.gd      # Plane placement
-│
-├── ui/                                  # UI components
-│   ├── asset_placer_dock.gd             # Main dock
-│   ├── modellib_browser.gd              # 3D model browser
-│   ├── meshlib_browser.gd               # MeshLibrary browser
-│   ├── placement_settings.gd            # Settings UI
-│   ├── tag_management_dialog.gd         # Tag management
-│   └── status_overlay_control.gd        # Status display
-│
-├── settings/                            # Settings system
-│   ├── settings_manager.gd              # Settings coordination
-│   ├── settings_definition.gd           # Setting definitions
-│   ├── settings_storage.gd              # Storage handling
-│   └── settings_persistence.gd          # Persistence logic
-│
-├── thumbnails/                          # Asset scanning
-│   ├── thumbnail_generator.gd           # Thumbnail rendering
-│   ├── thumbnail_queue_manager.gd       # Generation queue
-│   └── asset_scanner.gd                 # Asset discovery
-│
-└── utils/                               # Utility classes
-    ├── plugin_logger.gd                 # Logging system
-    ├── plugin_constants.gd              # Constants
-    ├── error_handler.gd                 # Error reporting
-    ├── transform_math.gd                # Math utilities
-    └── ...                              # Additional helpers
+├── plugin.cfg                     # Plugin metadata (version 3.0.0)
+├── plugin.gd                      # Plugin entry point
+├── core/
+│   ├── inline_transform.gd        # Inline keyboard transform engine
+│   └── keybinds.gd                # Keys and step sizes (Editor Settings)
+└── ui/
+    └── asset_dock.gd              # Asset browser dock
 ```
 
-**Optional Project Files:**
-
-```
-project_root/
-└── .assetcategories                     # Custom tags (JSON)
-```
-
-*Note: For detailed version history and recent changes, see [CHANGELOG.md](CHANGELOG.md).*
-
-## 🎮 Supported Asset Formats
-
-*Reference: `utils/plugin_constants.gd` - SUPPORTED_*_EXTENSIONS constants*
-
-### **3D Model Formats**
-
-- **FBX** (.fbx): Autodesk Filmbox format
-- **OBJ** (.obj): Wavefront object files
-- **GLTF/GLB** (.gltf, .glb): Modern 3D transmission format with PBR support
-- **DAE** (.dae): Collada interchange format
-- **Blend** (.blend): Direct Blender file import (requires Blender)
-
-### **Godot Native Formats**
-
-- **TSCN** (.tscn): Godot text-based scene files
-- **SCN** (.scn): Godot binary scene files
-- **TRES** (.tres): Text-based resource files (validated for mesh content)
-- **RES** (.res): Binary resource files (validated for mesh content)
-- **MeshLibrary** (.meshlib): Optimized mesh collections for GridMap
-
-### **Asset Detection**
-
-- Plugin scans the `res://` directory recursively (*Reference: `thumbnails/asset_scanner.gd`*)
-- Automatically skips `.godot` and hidden directories
-- Ignores `res://addons` folder by default (*Reference: `managers/category_manager.gd` - EDITOR_SETTINGS_IGNORED_FOLDERS_KEY*)
-- Only displays assets containing actual mesh data
-- Ignored assets can be managed via context menu
-
-## 💡 Tips & Workflow Optimization
-
-### **Efficient Asset Organization**
-
-- 📁 **Folder Structure**: Organize assets by category (buildings, props, nature) for automatic folder-based categorization
-
-  ```
-  res://assets/
-  ├── environment/nature/     → Auto-detected as "environment > nature"
-  ├── environment/urban/      → Auto-detected as "environment > urban"
-  ├── characters/             → Auto-detected as "characters"
-  └── props/                  → Auto-detected as "props"
-  ```
-
-- 🏷️ **Naming Convention**: Use descriptive names for easy identification in thumbnails
-- 🏷️ **Tag Early**: Add custom tags via right-click context menu as you import assets
-- ⭐ **Favorite Frequently Used**: Mark commonly used assets as favorites for instant filtering
-- 📊 **Asset Sizes**: Keep reasonable polygon counts for smooth real-time placement
-- 🔄 **Batch Operations**: Use Transform Mode to adjust multiple objects simultaneously
-
-### **Placement Best Practices**
-
-- 🎯 **Surface Alignment**: Enable "Snap to Ground" for natural object placement on terrain
-- 🔄 **Surface Normal Alignment**: Enable "Align with Surface Normal" for objects that should match terrain slope
-- 📏 **Grid Snapping**: Enable grid snap for architectural precision and consistent spacing
-- 🌐 **Grid Visualization**: Enable "Show Grid" to see the snap grid during placement
-- 🔍 **Camera Positioning**: Position your 3D viewport camera at optimal angles for placement
-- 🛠️ **Terrain3D Collision**: When using Terrain3D plugin separately, enable its Collision option (set to "Dynamic / Editor") so raycasts detect the terrain surface
-- ⌨️ **Hotkey Efficiency**: Customize keys in Settings tab for your most common operations
-- 🔄 **Asset Cycling**: Use `[` and `]` keys to quickly browse asset variations without leaving the viewport
-
-### **Transform Mode Workflow**
-
-- 🎯 **Multi-Object Selection**: Select multiple Node3D objects to transform them as a group
-- � **Group Center**: Objects rotate around their collective center while maintaining relative positions
-- 🔄 **Non-Destructive**: Original transforms preserved - ESC to cancel and restore
-- ✅ **Confirm Changes**: Left-click to apply transforms or ESC to cancel
-- 🎮 **Same Controls**: All placement controls work identically in Transform Mode
-
-### **Performance Optimization**
-
-- 🖼️ **Thumbnail Cache**: Clear cache in Settings if thumbnails become corrupted or to free memory
-- 🎨 **Thumbnail Size**: Plugin uses 64x64 thumbnails by default for fast rendering
-- 💾 **Memory Usage**: Thumbnails cached in memory - clear cache for very large asset libraries
-- 🔧 **Grid Extent**: Reduce grid extent value if grid overlay impacts performance
-- 📦 **Asset Discovery**: Plugin scans on startup - large projects may take a moment
-
-### **Collaborative Workflows**
-
-- 📋 **Per-Project Settings**: Settings stored in EditorSettings, unique per project
-- 🏷️ **Shared Tags**: Commit `.assetcategories` to version control for team tag sharing
-- 🔑 **Key Standardization**: Document team key binding conventions in project wiki
-- 📖 **Documentation**: Share folder organization structure with team members
-- 🔄 **Version Control**: `.assetcategories` is a simple JSON file, merges cleanly in Git
-- 🌍 **International Teams**: Universal keyboard support accommodates different layouts
+*Note: For detailed version history, see [CHANGELOG.md](CHANGELOG.md).*
 
 ## 🔧 Troubleshooting
 
-### **Assets Not Appearing in the Dock**
-
-- ✅ Ensure assets are located within your project's `res://` directory
-- ✅ Verify file formats are supported (see "Supported Asset Formats" section)
-- ✅ Check if assets contain actual mesh data (empty scenes won't appear)
-- ✅ Click the **Refresh** button (🔄) in the dock header to rescan
-- ✅ Check Godot's **Import** tab for asset import errors
-- ✅ Ensure assets aren't in the "Ignored Assets" list (check EditorSettings)
-- ✅ For MeshLibraries, make sure they're visible in the "MeshLibraries" tab, not "3D Models"
-
-### **Thumbnails Not Generating or Appearing Blank**
-
-- ✅ Clear thumbnail cache via **Settings → Clear Thumbnail Cache** button
-- ✅ Check **Output** panel (bottom) for ThumbnailGenerator error messages
-- ✅ Verify assets import correctly in Godot by opening them manually
-- ✅ Ensure your GPU drivers are up-to-date (thumbnails use OpenGL rendering)
-- ✅ Try restarting Godot if thumbnails appear corrupted
-- ✅ For scenes (.tscn), ensure they contain visible MeshInstance3D nodes
-
-### **Transform Mode Not Activating**
-
-- ✅ Ensure you have at least one Node3D object selected in the Scene Tree
-- ✅ Verify you're pressing the correct key (default: TAB, check Settings tab)
-- ✅ Make sure you're in the 3D viewport (not Scene Tree or other panels)
-- ✅ Plugin must be enabled in Project Settings → Plugins
-- ✅ Check if TAB key is bound to another shortcut in Godot's Editor Settings
-
-### **Placement Mode Issues**
-
-- ✅ Verify you're working in a 3D scene with objects that have collision
-- ✅ Ensure the 3D viewport camera is active and properly positioned
-- ✅ Check that "Snap to Ground" is enabled if you want surface raycasting
-- ✅ Try different camera angles if raycasting fails to hit surfaces
-- ✅ Disable "Snap to Ground" for free-space placement
-- ✅ For Terrain3D users: Enable Collision in Terrain3D settings
-
-### **Object Not Appearing Where Expected**
-
-- ✅ Check if grid snapping is enabled - disable to place freely
-- ✅ Verify snap offset settings aren't moving objects unexpectedly
-- ✅ Check height offset - press R to reset height to zero
-- ✅ Press G to reset manual position offsets
-- ✅ Disable "Align with Surface Normal" if objects are rotated oddly
-
-### **Key Binding Problems**
-
-- ✅ Open **Settings** tab to see current key assignments
-- ✅ Verify keys aren't conflicting with Godot's built-in shortcuts
-- ✅ Try reassigning problematic keys using modifier combinations (CTRL+ALT+key)
-- ✅ For international keyboards: Use modifier combinations for special characters
-- ✅ Remember: Plugin intercepts input ONLY during active Placement/Transform modes
-- ✅ Press ESC to exit modes if keys seem unresponsive
-
-### **Asset Cycling Not Working**
-
-- ✅ Ensure you're in Placement Mode with a preview visible
-- ✅ Check that `[` and `]` keys are properly configured in Settings
-- ✅ For international keyboards, configure with modifiers (e.g., CTRL+ALT+8)
-- ✅ Verify there are multiple assets visible in the current filtered view
-- ✅ Try filtering by category to narrow down assets for cycling
-
-### **Performance Issues**
-
-- ✅ Clear thumbnail cache if using many large assets (Settings tab)
-- ✅ Reduce grid extent value if grid overlay causes lag
-- ✅ Check for asset import issues in Godot's import system
-- ✅ Consider organizing assets into subdirectories for better management
-- ✅ Monitor Godot's profiler if placement feels sluggish
-- ✅ Disable grid overlay if not needed ("Show Grid" option)
-
-### **Settings Not Persisting**
-
-- ✅ Settings are stored in EditorSettings per-project automatically
-- ✅ Custom tags stored in `.assetcategories` file at project root
-- ✅ Ensure Godot has write permissions to your project directory
-- ✅ Check if `.assetcategories` file exists for tag persistence
-- ✅ Favorites/recent assets stored in EditorSettings, not in project files
-
-### **Plugin Not Loading**
-
-- ✅ Verify plugin is enabled: **Project → Project Settings → Plugins**
-- ✅ Check for error messages in Godot's Output panel on startup
-- ✅ Ensure all plugin files are present in `addons/simpleassetplacer/`
-- ✅ Verify `plugin.cfg` file exists and is properly formatted
-- ✅ Try disabling and re-enabling the plugin
-- ✅ Restart Godot if the dock doesn't appear after enabling
-
-## 🔬 Technical Implementation Notes
-
-For developers interested in understanding or extending the plugin:
-
-### **Mode System**
-
-The plugin uses an enum-based mode system:
-
-```gdscript
-enum Mode {
-    NONE,        # No active mode
-    PLACEMENT,   # Placing new assets
-    TRANSFORM    # Transforming selected objects
-}
-```
-
-*Reference: `core/mode_state_machine.gd`*
-
-### **Transform Calculations**
-
-The plugin uses **additive offsets** rather than absolute transforms:
-
-- **Rotation**: `final = original_rotation + surface_alignment + manual_offset`
-  - *Reference: `managers/rotation_manager.gd`*
-- **Scale**: `final = original_scale + scale_offset` (additive as of v1.4.1)
-  - *Reference: `managers/scale_manager.gd`*
-- **Position**: `final = raycast_position + height_offset + manual_position_offset`
-  - *Reference: `managers/position_manager.gd`*
-
-This preserves the original object state and allows non-destructive editing.
-
-### **Grid Snapping**
-
-Snapping uses a consistent formula:
-
-```gdscript
-snapped = floor((pos - offset) / step) * step + offset
-```
-
-- Per-axis control (X, Y, Z independently)
-- Optional object center snapping
-- *Reference: `utils/transform_math.gd` - snap functions*
-
-### **Placement Strategies**
-
-The plugin supports multiple placement strategies via the Strategy pattern:
-
-- **CollisionPlacementStrategy**: Raycast-based placement with surface detection
-- **PlanePlacementStrategy**: Virtual plane placement for architectural work
-- Strategies are swappable at runtime via PlacementStrategyService
-- *Reference: `placement/` directory*
-
-### **Input Handling**
-
-Input processing uses multiple layers:
-
-1. **InputHandler**: Low-level input detection with edge detection (*`managers/input_handler.gd`*)
-2. **KeyboardInputProcessor**: Keyboard-specific processing (*`core/keyboard_input_processor.gd`*)
-3. **InputProcessor**: High-level input orchestration (*`core/input_processor.gd`*)
-4. Plugin intercepts input via `_input()`, `_shortcut_input()`, and `_forward_3d_gui_input()`
-
-### **Service Registry Pattern**
-
-The plugin uses dependency injection via ServiceRegistry:
-
-- Centralized service lifetime management
-- Avoids circular dependencies
-- Makes testing and extension easier
-- *Reference: `core/service_registry.gd`, `core/service_registry_builder.gd`*
-
-### **Asset Management**
-
-- **AssetScanner**: Recursive directory scanning with format validation (*`thumbnails/asset_scanner.gd`*)
-- **CategoryManager**: Metadata storage in `.assetcategories` JSON and EditorSettings (*`managers/category_manager.gd`*)
-- **ThumbnailGenerator**: Isolated World3D rendering for clean thumbnail generation (*`thumbnails/thumbnail_generator.gd`*)
-
-### **Settings Persistence**
-
-Two storage mechanisms are used:
-
-- **EditorSettings**: User preferences (key bindings, favorites) - stored per-project by Godot
-- **Project File** (`.assetcategories`): Custom tags - version control friendly JSON
-- *Reference: `settings/settings_manager.gd`, `settings/settings_persistence.gd`*
+- **Dock is empty** — click the **Refresh** button in the dock header; only the formats listed above appear
+- **Thumbnails missing or stale** — previews are generated by the engine; use Refresh, or check the asset imports in the FileSystem dock
+- **Transform keys do nothing** — click into the 3D viewport first so it has focus; keys apply only to the 3D scene while the mouse is over it
+- **A key opens the wrong editor shortcut** — that's what the shortcut shield is for; it engages while you hold a transform key. If a conflict remains, remap the action in Editor Settings
+- **Node snaps while snapping is off** — grid snapping follows the editor's **Use Snap** toggle (toolbar); hold `Ctrl` to invert it temporarily, or set `snap_increment` to a negative value to disable it entirely
+- **Carried node flies away or collides** — fixed in 3.0: the pick-up ray skips the carried node's own collision; use `PageDown` to re-seat it on the floor
 
 ## 🤝 Contributing
 
-Contributions are welcome! The plugin uses a clean, modular architecture with clear separation of concerns that makes adding features straightforward.
-
-### **How to Contribute**
-
-- 🐛 **Bug Reports**: Open GitHub issues with:
-  - Godot version and OS
-  - Detailed reproduction steps
-  - Expected vs. actual behavior
-  - Error messages from Output panel
-  
-- 💡 **Feature Requests**: Describe:
-  - Use case and workflow context
-  - Expected behavior
-  - How it fits with existing features
-  
-- 🔧 **Code Contributions**:
-  - Follow the existing architectural patterns
-  - Keep managers focused and single-purpose
-  - Add logging via PluginLogger
-  - Update CHANGELOG.md with your changes
-  - Test thoroughly in Godot 4.x
-  
-- 📚 **Documentation**:
-  - Improve README clarity
-  - Add code comments for complex logic
-  - Create usage examples or tutorials
-
-### **Development Guidelines**
-
-- **Architecture**: Maintain separation between managers (no business logic in main plugin)
-- **Input Handling**: All input detection goes through InputHandler
-- **Settings**: Use SettingsManager for configuration
-- **Logging**: Use PluginLogger with appropriate component tags
-- **Error Handling**: Use ErrorHandler for user-facing errors
-
-### **Development Setup**
-
-1. Fork the repository on GitHub
-2. Create a feature branch from `dev` (or `main` if no dev branch)
-3. Make your changes following the guidelines above
-4. Test thoroughly in Godot 4.x (ideally multiple versions)
-5. Update CHANGELOG.md with your changes
-6. Submit pull request with clear description
-
-### **Code Style**
-
-- Use GDScript type hints (`: Type`) for all parameters and variables
-- Follow GDScript naming conventions (snake_case for functions/variables)
-- Add docstrings for classes and complex functions
-- Keep functions focused and under 50 lines when possible
-- Use meaningful variable names
+Contributions are welcome! Open issues with your Godot version, OS and reproduction steps, and keep pull requests focused. Code style: typed GDScript, snake_case, tabs (see `.editorconfig`), and an updated `CHANGELOG.md`.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
-**TL;DR**: You can use, modify, and distribute this plugin freely, including in commercial projects. Attribution appreciated but not required.
+## 🏆 Credits
 
-## 🏆 Credits & Acknowledgments
+**Author**: IIFabixn (aka LuckyTeapot)
+**Repository**: [github.com/IIFabixn/simple-asset-placer](https://github.com/IIFabixn/simple-asset-placer)
+**Version**: 3.0.0 · **Godot**: 4.x (developed and tested on 4.7) · **License**: MIT
 
-**Author**: IIFabixn (aka LuckyTeapot)  
-**Repository**: [github.com/IIFabixn/simple-asset-placer](https://github.com/IIFabixn/simple-asset-placer)  
-**Version**: 2.1.0 (*Reference: `plugin.cfg`*)  
-**Godot Version**: 4.x (tested on 4.3+)  
-**License**: MIT
-
-### **Feature Highlights**
-
-This plugin implements the following verified capabilities:
-
-- **Dual Mode System**: Placement and Transform modes (*`core/mode_state_machine.gd`*)
-- **Asset Cycling**: Viewport-based asset browsing with `[` and `]` keys (*`ui/modellib_browser.gd`*)
-- **Category System**: Automatic folder categories, custom tags, favorites, recent assets (*`managers/category_manager.gd`*)
-- **Flexible Input**: Modifier key support (CTRL, ALT, SHIFT, META) for all hotkeys (*`managers/input_handler.gd`*)
-- **Precision Placement**: Grid snapping, surface alignment, multiple placement strategies (*`managers/grid_manager.gd`, `managers/rotation_manager.gd`, `placement/` strategies*)
-- **Visual Feedback**: Real-time preview and overlay system (*`managers/preview_manager.gd`, `managers/overlay_manager.gd`*)
-- **Performance**: Asynchronous scanning, thumbnail caching (*`thumbnails/asset_scanner.gd`, `thumbnails/thumbnail_generator.gd`*)
-- **Modular Architecture**: Service-based dependency management (*`core/service_registry.gd`*)
-
-### **Acknowledgments**
-
-- The **Godot Engine** team and community for creating an excellent open-source game engine
-- Contributors and users who have provided feedback, bug reports, and feature suggestions
-- The game development community for establishing best practices in level design workflows
+Thanks to the Godot Engine team and community, and to everyone who tested and gave feedback.

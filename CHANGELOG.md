@@ -1,5 +1,135 @@
 # Changelog
 
+## [3.0.0] - 2026-09-26
+
+### 🚀 Complete Rewrite — Version 3.0
+
+A from-scratch rewrite focused on simplicity, shipping as a single addon (`addons/simpleassetplacer/`)
+that replaces 2.x entirely.
+
+### ✨ New Features
+
+#### Inline Keyboard Transforms (Engine Extension)
+
+- **Direct Keyboard Transforms on Selected Nodes**: Rotate/move/scale the current Node3D selection with no
+  plugin mode, no preview object, no overlays - the plugin just extends the editor
+  - Works while dragging an asset from any dock into the viewport - the drag preview itself is transformed
+    and the transform transfers onto the instantiated nodes when dropped - or with any current selection
+    while the mouse is over the 3D viewport
+  - Rotate: `X` / `Y` / `Z` (stepped, hold-to-repeat, world-space axes)
+  - Move: `W` / `A` / `S` / `D` (stepped like rotation, hold-to-repeat, camera-snapped to XZ axes,
+    default 0.5 per step) + `Q` / `E` world height
+  - Scale: `L` / `K` (stepped multiplicative, clamped to a 0.01 minimum)
+  - Modifiers: `CTRL` fine (x0.1) - `ALT` large (x5) - `SHIFT` reverses direction
+  - **Pick-Up Gating**: Scene nodes only respond to the transform keys after pressing the
+    pickup key (default `Tab`, configurable) - the picked selection then follows the mouse
+    cursor like a drag preview (surface placement ray with collision, falling back to the
+    pickup-depth plane), move keys nudge it on top of that, `Enter`/`Tab`/LMB confirm and
+    drop the pickup, `Escape`/RMB (configurable keys) resets every touched node to its
+    pickup-time transform and drops the pickup; works regardless of the mouse position,
+    ends automatically on deselect, and shows a dock hint with the carried nodes - file-drag preview transforms
+    stay pickup-free
+  - **Quick Duplicate (Stamp)**: `V` (configurable) copies the current Node3D selection
+    in place and picks the copies up for placement - they follow the mouse like a drag
+    preview, LMB/`Enter`/`Tab` stamps them down as one undoable action, `Escape`/RMB
+    removes the fresh copies again, and stamping again duplicates the placed copies
+  - **Grid Snapping**: the mouse-follow quantizes the cursor point to the editor's
+    translate snap increment (the same value the viewport Snap menu configures, read
+    live from the editor); `snap_increment` in the Editor Settings chooses
+    `0` = follow the editor, `> 0` = fixed increment, `< 0` = off, and the fine
+    modifier (Ctrl) gives 1/10 steps
+  - **Snap Toggle Aware**: in "follow the editor" mode the follow snap also mirrors
+    the spatial editor toolbar's Use Snap toggle state (holding Ctrl inverts it,
+    exactly like gizmo dragging), so snapping now turns off with the toolbar toggle
+  - **Confirm Click Isolation**: the confirming LMB press and its release are both
+    consumed at the editor's root input stage, so the editor's internal click-select
+    can no longer override the plugin's post-confirm selection (e.g. a stamped
+    duplicate no longer loses the selection to whatever sits under the cursor)
+  - **Exact Resting Height**: pick-up follow snaps the surface contact point to the
+    grid before applying the bounds-on-surface lift, so picking up a placed node no
+    longer sinks it by the rounded difference (grid snap now only quantizes the
+    contact point, never the resting height)
+  - **Self-Collision Skip**: the follow ray ignores the carried nodes' own collision,
+    including CSG shapes with `use_collision` (their internal physics body is not a
+    scene node and was missed by the RID pre-collection) - the carried node can no
+    longer ray-cast onto itself and climb away
+  - **Snap to Floor (Page Down)**: while carrying, `PageDown` (configurable
+    `snap_to_floor_key`) drops the carried selection onto the surface directly below
+    it - skipping its own collision like the follow ray - and keeps the mouse-follow
+    height locked there (XZ keeps following); height keys (Q/E) or a new pickup
+    release the lock, and re-pressing re-snaps under the current position
+  - **Shortcut Shield**: while the plugin owns the keyboard (pickup or drag) it swallows
+    transform keys at the editor's root input stage, so fine/large-step combos like
+    Ctrl+S (move down), Ctrl+X (rotate), Ctrl+Z (rotate), Ctrl+A (move left) or Ctrl+D
+    (move right) no longer trigger Save, Cut, Undo, Select All, Duplicate or tool
+    switching mid-transform; outside sessions editor shortcuts work untouched
+  - Keys are matched against keycap labels on every keyboard layout (logical keycodes)
+    so `Y`/`Z` behave correctly on QWERTZ keyboards
+  - Changes batch into single undoable actions - one Ctrl+Z restores the whole burst
+  - Plain transform keys are consumed only while transforms can run, so editor shortcuts
+    (Q/W/E/R tool switching, CTRL+S save, ...) keep working otherwise
+  - Files: `addons/simpleassetplacer/core/inline_transform.gd`, `addons/simpleassetplacer/core/keybinds.gd`, `addons/simpleassetplacer/plugin.gd`
+
+#### Keybinds via Godot's Editor Settings
+
+- **Native Editor Settings Integration**: Every key and step value lives under `simple_asset_placer/` in
+  Editor Settings - editable with Godot's own UI, no custom settings panel, refreshed live on change
+  - Files: `addons/simpleassetplacer/core/keybinds.gd`
+- **Legacy Settings Cleanup**: On first startup the plugin removes editor settings left behind by the
+  removed 2.x addon and pre-release 3.0 builds (old prefixes and categories/ui/browser entries),
+  keeping only its own current settings
+
+#### Compact Asset Browser Dock
+
+- **Engine-Pipeline Browser**: Asset browser dock (right side by default) whose thumbnails come from the engine's own
+  `EditorResourcePreview` pipeline (same cache as the FileSystem dock - no custom thumbnail system)
+  - Folder filter with native folder picker dialog, refresh, and live search
+  - Grouped tree layout: subfolders become collapsible group headers (native
+    tree, folders first and alphabetical); the old flat grid view was removed
+  - Dock default moved to the right side (tab next to the Inspector); Godot's saved
+    editor layout keeps overriding the default once the dock was placed manually
+  - Native drag-and-drop using the standard `"files"` payload - the editor instantiates dropped assets itself
+  - Double-click places assets on the ground plane under the mouse, with full undo support
+  - Files: `addons/simpleassetplacer/ui/asset_dock.gd`, `addons/simpleassetplacer/plugin.gd`
+
+### ⚡ Removed in 3.0
+
+Everything beyond the two core features: placement modes and state machine, custom thumbnail pipeline,
+MeshLibrary support, pickup mode, context menus, overlays, and the custom settings UI. Keep 2.x enabled
+if you need those.
+
+---
+
+## [Unreleased]
+
+### ✨ New Features
+
+#### Scene Tree Context Menu Enhancements
+
+- **Transform Node Context Menu**: Quick access to transform mode from Scene Tree
+  - Right-click any Node3D object(s) in Scene Tree → "Transform Node"
+  - Instantly enters transform mode for selected nodes
+  - Works with single or multiple selected Node3D objects
+  - Alternative to TAB keyboard shortcut for activating transform mode
+  - Files: `context_menu/scene_tree_context_menu.gd`, `simpleassetplacer.gd`
+
+#### Pickup for Placement
+
+- **Pick Up Scene Nodes for Placement**: Select existing Node3D objects and enter placement mode to place copies
+  - **Keyboard Shortcut**: Press `SHIFT+TAB` to pick up selected nodes
+  - **Context Menu**: Right-click Node3D objects in Scene Tree → "Pickup for Placement"
+  - **Multi-Node Support**: Pick up multiple nodes simultaneously as a group
+  - **Smart Pivot**: Container origin automatically centered on selection for intuitive rotation/movement
+  - **Non-Destructive**: Original nodes remain in place, only copies are placed
+  - **Full Transform Support**: Rotate, scale, and position picked-up nodes like regular assets
+  - **Preview Accuracy**: Placed nodes exactly match preview transforms (WYSIWYG)
+  - **Clean Scene Tree**: Wrapper container automatically removed, only actual nodes placed
+  - **Unique Naming**: Automatically generates readable unique names (e.g., `building_a2`, `building_a3`)
+  - **Universal Compatibility**: Works with any Node3D type (MeshInstance3D, StaticBody3D, scenes, etc.)
+  - Files: `utils/pickup_handler.gd`, `context_menu/scene_tree_context_menu.gd`, `simpleassetplacer.gd`, `core/placement_mode_controller.gd`
+
+---
+
 ## [2.1.0] - 2025-10-31
 
 ### ✨ New Features
