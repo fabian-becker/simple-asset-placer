@@ -11,6 +11,8 @@ RESPONSIBILITIES:
 - Register/resolve Editor Settings keybinds, refreshing on settings change
 - Drive InlineTransformEngine every frame with the active 3D viewport camera
 - Install the AssetBrowserDock in the right dock area (next to Inspector)
+- Hand the dock the placement engine (dock placement, keep-placing chains)
+- Keep the dock's "Keep placing" switch in sync with its editor setting
 - Flush pending inline-transform undo actions on teardown
 - Swallow owned transform keys and the confirm click at the root input and
   shortcut input stages so editor shortcuts (save, cut, undo, select all,
@@ -34,7 +36,9 @@ func _enter_tree() -> void:
 	_engine = InlineTransformEngine.new()
 	_dock = AssetBrowserDock.new()
 	_engine.undo_redo = get_undo_redo()
-	_dock.undo_redo = get_undo_redo()
+	_dock.placer = _engine
+	_engine.set_asset_path_provider(Callable(_dock, "get_selected_asset_path"))
+	_engine.set_keep_placing_mode_provider(Callable(_dock, "is_keep_placing_enabled"))
 	add_control_to_dock(DOCK_SLOT_RIGHT_UL, _dock)
 
 
@@ -114,6 +118,10 @@ func _exit_tree() -> void:
 
 func _on_editor_settings_changed() -> void:
 	TransformKeybinds.resolve_keys()
+	# The keep-placing setting can also be flipped in the Editor Settings
+	# dialog - keep the dock switch in sync with it.
+	if _dock:
+		_dock.sync_keep_placing()
 
 
 ## Removes settings left behind by the removed 2.x addon and pre-release 3.0
@@ -130,6 +138,8 @@ func _cleanup_legacy_settings() -> void:
 	for action in TransformKeybinds.KEY_DEFAULTS:
 		keep["%s/%s_key" % [TransformKeybinds.SETTINGS_PREFIX, action]] = true
 	for id in TransformKeybinds.VALUE_DEFAULTS:
+		keep["%s/%s" % [TransformKeybinds.SETTINGS_PREFIX, id]] = true
+	for id in TransformKeybinds.TOGGLE_DEFAULTS:
 		keep["%s/%s" % [TransformKeybinds.SETTINGS_PREFIX, id]] = true
 	var stale_paths: PackedStringArray = []
 	for prop in editor_settings.get_property_list():

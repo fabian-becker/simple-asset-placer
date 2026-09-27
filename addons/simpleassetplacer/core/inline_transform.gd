@@ -20,6 +20,16 @@ RESPONSIBILITIES:
 - Quick duplicate (default V): copies the current selection and picks the
   copies up for placement; confirming keeps them as one undoable action,
   reset/cancel removes them again
+- Keep placing: activating an asset in the dock (double-click/Enter) spawns
+  one instance under the cursor and picks it up, so it can be transformed
+  before it is confirmed; holding the keep-placing modifier (default SHIFT)
+  while confirming - or turning on the dock's "Keep placing" switch - places
+  that instance and carries a fresh copy of the same asset, so every confirm
+  lays down the next one until the mode is left off a confirm, the session is
+  cancelled (Escape/right mouse) or the chain runs dry. Dock and drag & drop
+  chains re-arm with their asset; confirming a picked-up scene node (or a
+  quick-duplicate stamp) instead carries duplicates of the confirmed
+  selection
 - The mouse-follow snaps to the editor's translate snap increment (the
   fine modifier gives 1/10 steps)
 - Batch changes into debounced, undoable editor actions
@@ -36,6 +46,7 @@ ARCHITECTURE POSITION:
 
 const UNDO_DEBOUNCE_MS := 400.0
 const UNDO_ACTION_NAME := "Keyboard Transform Nodes"
+const PLACE_UNDO_ACTION := "Place Asset (Simple Asset Placer)"
 const MIN_SCALE := 0.01
 const ROTATE_FIRST_REPEAT_MS := 250.0
 const ROTATE_REPEAT_MS := 100.0
@@ -71,6 +82,18 @@ var _dup_copies: Array[Node3D] = []
 var _pickup_cancelled := false
 var _snap_toggle: Button = null
 var _floor_lock_y = null
+
+## Keep-placing chain: the carried instances waiting for their confirm
+var _keep_placing_carried: Array[Node3D] = []
+var _carried_ids: Dictionary = {}
+var _keep_placing_path := ""
+var _keep_placing_follows_dock := false
+## Node-based chains (scene-tree pickups) stamp duplicates of the node that was
+## just placed instead of instantiating an asset path.
+var _keep_placing_duplicates := false
+var _asset_path_provider: Callable
+var _keep_placing_mode_provider: Callable
+var _last_drag_path := ""
 
 
 ## Main Processing
@@ -188,7 +211,7 @@ func _process_pickup_keys() -> void:
 			"pickup":
 				_set_pickup_active(not _pickup_active)
 			"confirm":
-				_set_pickup_active(false)
+				_confirm_pickup()
 			"reset":
 				_reset_pickup_transforms()
 			"duplicate":
@@ -213,7 +236,7 @@ func _process_pickup_mouse_buttons() -> void:
 		if not held or was_held or not _pickup_active or not mouse_in_view:
 			continue
 		if entry[1]:
-			_set_pickup_active(false)
+			_confirm_pickup()
 		else:
 			_reset_pickup_transforms()
 
@@ -231,6 +254,9 @@ func _set_pickup_active(active: bool) -> void:
 		# confirm/auto-drop; an explicit cancel (reset key / RMB) removes
 		# them entirely.
 		_end_duplicate_session(not _pickup_cancelled)
+		# The carried keep-placing instance is placed where it hovers on
+		# confirm, or dropped on cancel; already-placed links always stay.
+		_end_keep_placing(not _pickup_cancelled)
 		_pickup_cancelled = false
 	_floor_lock_y = null
 	# Each pickup session is its own undoable unit.
@@ -266,21 +292,43 @@ func get_pickup_status() -> String:
 		"LMB",
 	]
 	var floor_hint := TransformKeybinds.get_action_label("snap_to_floor")
+	if not _keep_placing_carried.is_empty():
+		var chain_hint := "keep placing on"
+		if not _keep_placing_active():
+			chain_hint = "hold %s to continue" % (
+				TransformKeybinds.get_action_label("keep_placing_modifier")
+			)
+		return "Keep placing: %s  (%s/LMB places - %s - %s/RMB stops)" % [
+			", ".join(names),
+			TransformKeybinds.get_action_label("confirm"),
+			chain_hint,
+			TransformKeybinds.get_action_label("reset"),
+		]
 	if not _dup_copies.is_empty():
-		return "Placing duplicates: %s  (%s confirm - %s/%s removes - %s floor)" % [
+		return "Placing duplicates: %s  (%s confirm - %s/%s removes - %s floor%s)" % [
 			", ".join(names),
 			confirm,
 			TransformKeybinds.get_action_label("reset"),
 			"RMB",
 			floor_hint,
+			_keep_placing_hint(),
 		]
-	return "Transforming: %s  (%s confirm - %s/%s reset - %s floor)" % [
+	return "Transforming: %s  (%s confirm - %s/%s reset - %s floor%s)" % [
 		", ".join(names),
 		confirm,
 		TransformKeybinds.get_action_label("reset"),
 		"RMB",
 		floor_hint,
+		_keep_placing_hint(),
 	]
+
+
+func _keep_placing_hint() -> String:
+	"""Suffix telling that a confirm of a scene pickup stamps a copy while keep
+	placing is active ("" when it is off)."""
+	if not _keep_placing_active():
+		return ""
+	return " - keep placing on (confirm stamps a copy)"
 
 
 ## Quick Duplicate (Stamp)
@@ -375,6 +423,307 @@ func _commit_duplicate_action(copies: Array[Node3D]) -> void:
 		undo_redo.add_undo_method(copy.get_parent(), "remove_child", copy)
 	# The changes were already applied when the copies were created.
 	undo_redo.commit_action(false)
+
+
+## Asset Placement and Keep-Placing
+
+
+func set_asset_path_provider(provider: Callable) -> void:
+	"""Dock callback returning the currently selected asset path ("" when the
+	dock has no selection). The chain re-arms with that asset, so switching
+	rows mid-chain swaps what the next confirm places."""
+	_asset_path_provider = provider
+
+
+func set_keep_placing_mode_provider(provider: Callable) -> void:
+	"""Dock callback returning whether the "Keep placing" switch is on. While
+	it is on the chain continues on every confirm, no modifier needed."""
+	_keep_placing_mode_provider = provider
+
+
+func place_asset(path: String) -> void:
+	"""Spawn one instance of an asset under the cursor and pick it up, so it
+	can be transformed (and snapped onto surfaces) before it is confirmed.
+	While keep placing is active (modifier held or dock switch on), confirming
+	places the carried instance and spawns the next one."""
+	var scene_root := EditorInterface.get_edited_scene_root()
+	if not scene_root or not scene_root is Node3D:
+		return
+	if _pickup_active:
+		# A browsed placement takes over from whatever is being carried
+		# (picked-up nodes are restored, a keep-placing chain drops its
+		# unplaced instance) so the new instance never inherits the session.
+		_reset_pickup_transforms()
+	_set_pickup_active(true)
+	if _spawn_carried(path, Transform3D(Basis(), _get_placement_position()), scene_root) == null:
+		_set_pickup_active(false)
+		return
+	# Chains started here keep re-arming with the dock's current row.
+	_keep_placing_path = path
+	_keep_placing_follows_dock = true
+
+
+func _instantiate_asset(path: String) -> Node3D:
+	"""PackedScene root or a MeshInstance3D wrapping a bare Mesh."""
+	if path.is_empty():
+		return null
+	var resource := load(path)
+	if resource is PackedScene:
+		var instance := (resource as PackedScene).instantiate()
+		if instance is Node3D:
+			return instance
+		instance.free()
+		return null
+	if resource is Mesh:
+		var mesh_instance := MeshInstance3D.new()
+		mesh_instance.mesh = resource
+		return mesh_instance
+	return null
+
+
+func _get_placement_position() -> Vector3:
+	"""Ground-plane point under the cursor (viewport centre while outside)."""
+	var viewport := _get_viewport_3d()
+	var camera: Camera3D = viewport.get_camera_3d() if viewport else null
+	if not viewport or not camera:
+		return Vector3.ZERO
+
+	var mouse_position := viewport.get_mouse_position()
+	if not viewport.get_visible_rect().has_point(mouse_position):
+		mouse_position = viewport.get_visible_rect().get_center()
+
+	var origin := camera.project_ray_origin(mouse_position)
+	var direction := camera.project_ray_normal(mouse_position)
+	if direction.y < -0.001:
+		var t := -origin.y / direction.y
+		return origin + direction * t
+
+	var fallback := origin + direction * 10.0
+	fallback.y = 0.0
+	return fallback
+
+
+func _keep_placing_active() -> bool:
+	"""True when a confirm should place the carried instance and carry the
+	next one: the keep-placing modifier is held, or the dock's "Keep placing"
+	switch is on."""
+	if TransformKeybinds.is_keep_placing_modifier_held():
+		return true
+	if _keep_placing_mode_provider.is_valid():
+		return bool(_keep_placing_mode_provider.call())
+	return false
+
+
+func _start_keep_placing_from(path: String, placed: Node3D, follows_dock: bool) -> bool:
+	"""Carry a fresh instance of the just-placed asset. The placement itself
+	stays; the new instance follows the cursor until it is confirmed (placed
+	in turn) or cancelled. follows_dock chains keep re-arming with the dock's
+	current row, so switching assets mid-chain is possible."""
+	if not is_instance_valid(placed) or placed.get_parent() == null:
+		return false
+	if _pickup_active:
+		_set_pickup_active(false)
+	if _spawn_carried(path, placed.global_transform, placed.get_parent()) == null:
+		return false
+	_keep_placing_path = path
+	_keep_placing_follows_dock = follows_dock
+	_set_pickup_active(true)
+	return true
+
+
+func _confirm_pickup() -> void:
+	"""Confirm the carried nodes. In a keep-placing chain the carried instance
+	becomes its own undoable placement; while keep placing is active (modifier
+	held or dock switch on) the chain re-arms with a fresh instance instead of
+	ending. Pickups of existing scene nodes are confirmed by
+	_confirm_scene_pickup()."""
+	if _keep_placing_carried.is_empty():
+		_confirm_scene_pickup()
+		return
+	var continue_chain := _keep_placing_active()
+	var placed := _take_carried()
+	for node in placed:
+		_commit_placed(node)
+	if not continue_chain:
+		_set_pickup_active(false)
+		return
+	if not _spawn_next_link(placed):
+		_set_pickup_active(false)
+
+
+func _confirm_scene_pickup() -> void:
+	"""Confirm a pickup of existing scene nodes (plain transform or a
+	quick-duplicate stamp). While keep placing is active the confirmed nodes
+	stay where they are and duplicates of them are carried, so the next confirm
+	stamps another copy (or group) instead of just ending the session."""
+	if not _pickup_active:
+		return
+	var nodes := _get_selected_node3d()
+	if nodes.is_empty() or not _keep_placing_active():
+		_set_pickup_active(false)
+		return
+	# Commit the confirmed session first (transform batch or stamp action) so
+	# the carried duplicates inherit the transforms just confirmed.
+	_set_pickup_active(false)
+	if _spawn_duplicate_carried(nodes).is_empty():
+		return
+	_keep_placing_duplicates = true
+	_set_pickup_active(true)
+
+
+func _spawn_next_link(placed: Array) -> bool:
+	"""Carry the next link of a chain at the nodes just placed: duplicates of
+	them for scene-node chains, otherwise a fresh instance of the chain's
+	asset."""
+	if placed.is_empty():
+		return false
+	if _keep_placing_duplicates:
+		return not _spawn_duplicate_carried(placed).is_empty()
+	var anchor: Node3D = placed.back()
+	if not is_instance_valid(anchor) or anchor.get_parent() == null:
+		return false
+	var source := _keep_placing_source_path(placed)
+	if source.is_empty():
+		return false
+	if _spawn_carried(source, anchor.global_transform, anchor.get_parent()) == null:
+		return false
+	_keep_placing_path = source
+	return true
+
+
+func _spawn_carried(path: String, xf: Transform3D, parent: Node) -> Node3D:
+	"""Instantiate the next chain link at xf, beside the instance just placed."""
+	var node := _instantiate_asset(path)
+	if node == null:
+		return null
+	if parent == null or not parent.is_inside_tree():
+		node.free()
+		return null
+	node.name = _unique_child_name(parent, String(node.name))
+	parent.add_child(node)
+	node.global_transform = xf
+	var editor_root := EditorInterface.get_edited_scene_root()
+	if editor_root and editor_root.is_ancestor_of(node):
+		node.owner = editor_root
+	_arm_carried([node])
+	return node
+
+
+func _spawn_duplicate_carried(sources: Array) -> Array[Node3D]:
+	"""Carry duplicates of already-placed scene nodes, so a chain of picked-up
+	scene nodes stamps copies of them (mirrors the quick-duplicate copy
+	creation, so a multi-selection chain carries the whole group)."""
+	var copies: Array[Node3D] = []
+	var editor_root := EditorInterface.get_edited_scene_root()
+	for source in sources:
+		if not is_instance_valid(source):
+			continue
+		var parent: Node = source.get_parent()
+		if parent == null or not parent.is_inside_tree():
+			continue
+		var copy := source.duplicate() as Node3D
+		if copy == null:
+			continue
+		copy.name = _unique_child_name(parent, String(source.name))
+		parent.add_child(copy)
+		copy.global_transform = source.global_transform
+		if editor_root and editor_root.is_ancestor_of(copy):
+			copy.owner = editor_root
+		copies.append(copy)
+	if not copies.is_empty():
+		_arm_carried(copies)
+	return copies
+
+
+func _arm_carried(nodes: Array) -> void:
+	"""Hand the carried nodes to the pickup session: select them, restart the
+	follow from their own transforms, and keep them out of the transform undo
+	batch (confirming commits them as one whole placement)."""
+	_keep_placing_carried.clear()
+	_carried_ids.clear()
+	var selection := EditorInterface.get_selection()
+	if selection:
+		selection.clear()
+	for node in nodes:
+		if not is_instance_valid(node):
+			continue
+		_keep_placing_carried.append(node)
+		_carried_ids[node.get_instance_id()] = true
+		if selection:
+			selection.add_node(node)
+	if _keep_placing_carried.is_empty():
+		return
+	_pickup_offset = Vector3.ZERO
+	_pickup_anchor = _get_group_pivot(_keep_placing_carried)
+	_floor_lock_y = null
+	_pickup_cancelled = false
+
+
+func _take_carried() -> Array[Node3D]:
+	var carried := _keep_placing_carried
+	_keep_placing_carried = []
+	_carried_ids.clear()
+	return carried
+
+
+func _commit_placed(node: Node3D) -> void:
+	"""Record an already-applied carried instance as one undoable placement."""
+	if not undo_redo or not is_instance_valid(node):
+		return
+	var parent := node.get_parent()
+	if parent == null:
+		return
+	var editor_root := EditorInterface.get_edited_scene_root()
+	undo_redo.create_action(PLACE_UNDO_ACTION)
+	undo_redo.add_do_method(parent, "add_child", node)
+	if editor_root and editor_root.is_ancestor_of(node):
+		undo_redo.add_do_method(node, "set_owner", editor_root)
+	undo_redo.add_do_property(node, "global_transform", node.global_transform)
+	undo_redo.add_do_reference(node)
+	undo_redo.add_undo_method(parent, "remove_child", node)
+	undo_redo.commit_action(false)
+
+
+func _end_keep_placing(commit: bool) -> void:
+	"""Leave the chain: keep the last carried instance as a normal placement,
+	or drop it on cancel so only the confirmed links remain."""
+	var carried := _take_carried()
+	_keep_placing_path = ""
+	_keep_placing_follows_dock = false
+	_keep_placing_duplicates = false
+	if carried.is_empty():
+		return
+	if commit:
+		for node in carried:
+			_commit_placed(node)
+		return
+	var selection := EditorInterface.get_selection()
+	if selection:
+		selection.clear()
+	for node in carried:
+		if not is_instance_valid(node):
+			continue
+		var parent := node.get_parent()
+		if parent:
+			parent.remove_child(node)
+		node.queue_free()
+
+
+func _keep_placing_source_path(placed: Array) -> String:
+	"""What the next link instantiates. A chain started from the dock follows
+	the dock's current row, so switching assets mid-chain works; otherwise the
+	chain sticks to its own asset path ("scene_file_path" of the instance as a
+	last resort)."""
+	if _keep_placing_follows_dock and _asset_path_provider.is_valid():
+		var selected := String(_asset_path_provider.call())
+		if not selected.is_empty():
+			return selected
+	if not _keep_placing_path.is_empty():
+		return _keep_placing_path
+	for node in placed:
+		if is_instance_valid(node) and not node.scene_file_path.is_empty():
+			return node.scene_file_path
+	return ""
 
 
 ## Pick-Up Mouse Follow
@@ -801,6 +1150,8 @@ func _find_drag_preview_node() -> Node3D:
 	var files: Array = data.get("files", [])
 	if files.is_empty():
 		return null
+	# Remember the dragged asset for keep-placing after the drop lands.
+	_last_drag_path = String(files[0])
 
 	var scene_root := EditorInterface.get_edited_scene_root()
 	if not scene_root:
@@ -870,19 +1221,31 @@ func _finish_drag(allow_transfer: bool) -> void:
 	if not _drag_active:
 		return
 	_drag_active = false
-	if not allow_transfer or not _drag_modified:
+	var drag_path := _last_drag_path
+	_last_drag_path = ""
+	if not allow_transfer:
 		return
 
 	# Only nodes instantiated by the drop (selection delta) receive the
 	# preview transform; the drop position stays editor-computed.
-	var scale_basis := Basis.from_scale(Vector3.ONE * _drag_scale)
+	var dropped: Array[Node3D] = []
 	for node in _get_selected_node3d():
 		if _drag_selection_ids.has(node.get_instance_id()):
 			continue
-		var xf: Transform3D = node.global_transform
-		xf.basis = scale_basis * _drag_basis * xf.basis
-		node.global_transform = xf
-		node.global_position += _drag_offset
+		dropped.append(node)
+	if dropped.is_empty():
+		return
+	if _drag_modified:
+		var scale_basis := Basis.from_scale(Vector3.ONE * _drag_scale)
+		for node in dropped:
+			var xf: Transform3D = node.global_transform
+			xf.basis = scale_basis * _drag_basis * xf.basis
+			node.global_transform = xf
+			node.global_position += _drag_offset
+	# Keep-placing after a drop: the editor placed the instance itself, so
+	# carry a fresh copy of the same asset for the next confirm.
+	if _keep_placing_active() and not drag_path.is_empty():
+		_start_keep_placing_from(drag_path, dropped[0], false)
 
 
 func _accumulate_drag_movement(camera: Camera3D) -> bool:
@@ -1000,6 +1363,28 @@ func should_consume_key(event: InputEvent) -> bool:
 		return false
 	if event.echo or not event.pressed:
 		return false
+	# Logical keycodes match keycap labels on every layout; physical codes are
+	# US-QWERTY positions and swap Y/Z on QWERTZ keyboards.
+	var key: Key = event.keycode
+	if key == KEY_NONE:
+		key = event.physical_keycode
+	if _is_ui_text_focus_locked():
+		return false
+	# A keep-placing chain owns confirm/reset before any other guard: the
+	# confirm is usually pressed with the keep-placing modifier (SHIFT) held,
+	# and the chain starts from the dock, so the mouse may still be over the
+	# tree - which would otherwise re-activate the selected row and place a
+	# second asset through the dock. A scene pickup with keep placing on
+	# (modifier held or dock switch on) owns them too, so its SHIFT+confirm is
+	# not handed back to the editor.
+	var chain_owned := not _keep_placing_carried.is_empty()
+	if _pickup_active and _keep_placing_active():
+		chain_owned = true
+	if chain_owned:
+		var chain_confirm := TransformKeybinds.get_action_key("confirm")
+		var chain_reset := TransformKeybinds.get_action_key("reset")
+		if (chain_confirm != KEY_NONE and key == chain_confirm) or (chain_reset != KEY_NONE and key == chain_reset):
+			return true
 	# CTRL (fine step) and ALT (large step) are the plugin's own transform
 	# modifiers, so combos with them are owned by the plugin too. SHIFT and
 	# META stay with the editor.
@@ -1008,13 +1393,6 @@ func should_consume_key(event: InputEvent) -> bool:
 	var viewport := _get_viewport_3d()
 	if not viewport or not _is_mouse_in_viewport(viewport):
 		return false
-	if _is_ui_text_focus_locked():
-		return false
-	# Logical keycodes match keycap labels on every layout; physical codes are
-	# US-QWERTY positions and swap Y/Z on QWERTZ keyboards.
-	var key: Key = event.keycode
-	if key == KEY_NONE:
-		key = event.physical_keycode
 	# The pickup key is swallowed while a Node3D selection exists so the
 	# toggle stays clean (it has no other default use over the viewport).
 	var pickup_key := TransformKeybinds.get_action_key("pickup")
@@ -1126,6 +1504,10 @@ func _flush_undo_if_selection_changed(nodes: Array) -> void:
 
 func _capture_undo(node: Node3D) -> void:
 	var id := node.get_instance_id()
+	# Carried keep-placing instances are committed as one whole placement
+	# (position, rotation and scale included), not as transform deltas.
+	if _carried_ids.has(id):
+		return
 	if not _pending_undo.has(id):
 		_pending_undo[id] = {"node": node, "original": node.global_transform}
 
