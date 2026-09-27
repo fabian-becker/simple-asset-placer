@@ -1,5 +1,58 @@
 # Changelog
 
+## [Unreleased]
+
+_No unreleased changes yet._
+
+## [3.1.0] - 2026-09-27
+
+### ✨ New Features
+
+#### Keep-Placing Placement
+
+- **Dock activation spawns a transformable instance**: double-clicking an asset in the Asset
+  Browser dock (or pressing `Enter` on the row) no longer drops it straight onto the ground -
+  the instance is spawned under the cursor and picked up, so it follows the cursor over
+  surfaces and takes the usual transform keys (movement, rotation, scale, grid snapping,
+  snap-to-floor, fine/large modifiers) before it is confirmed
+- **Keep placing - hold `SHIFT` while confirming, or turn on the dock switch**: the carried instance
+  is placed *and* a fresh copy of the same asset is carried right away, so every following confirm
+  (`Enter`/LMB) lays down the next piece - ideal for wall, fence and prop rows
+  - Every confirm commits the placed instance as **its own undo step**
+  - Leaving the mode off a confirm (release the modifier / turn the switch off) ends the session;
+    `Esc`/RMB cancels the carried, not-yet-placed instance only - every already-placed piece stays
+  - Drag & drop from any dock keeps the editor's own placement; holding the modifier as the
+    drop lands (or having the switch on) starts a chain from the dropped asset
+  - Chains started from the dock follow the dock's currently selected row, so the asset can
+    be swapped mid-chain
+  - Keep placing also covers **picked-up scene nodes**: confirming a transform (or a
+    quick-duplicate stamp) while the mode is on keeps the nodes where they are and carries
+    *duplicates of the confirmed selection*, so copies of existing tree nodes - or of a whole
+    multi-node group - can be stamped in a row; `Esc`/RMB drops the carried duplicates and
+    leaves the confirmed nodes untouched
+  - The dock hint reports the session (`Keep placing: <asset> - hold SHIFT to continue - Esc/RMB
+    stops`, or `... - keep placing on - ...` while the switch is on; a scene pickup reads
+    `- keep placing on (confirm stamps a copy)`) and the confirm key is
+    consumed while an instance is carried, so `Enter` no longer reaches the dock tree and places a
+    second asset; confirm/reset are owned the same way during a scene pickup with the mode on, so a
+    `SHIFT`+`Enter` is not handed back to the editor either
+  - Dock placement now runs through the transform engine, sharing instantiation, selection,
+    pickup and undo code with the chain (the placed node is registered via
+    `add_do_reference`, so undo/redo no longer leaks it)
+  - New editor setting: `simple_asset_placer/keep_placing_modifier_key` (default `SHIFT`)
+- **`Keep placing` switch in the dock**: a checkbox right below the asset count toggles the same mode
+  for good, so a row of pieces can be laid down without holding any modifier
+  - Applies to dock activation, drag & drop and picked-up scene nodes alike; `Esc`/RMB still ends
+    the chain
+  - Stored as the editor setting `simple_asset_placer/keep_placing_mode`, so the mode survives editor
+    restarts, and the switch follows manual edits of that setting
+  - Built with `FOCUS_NONE`, so `Enter`/`Space` keep confirming the placement instead of toggling it
+  - Files: `addons/simpleassetplacer/core/inline_transform.gd`,
+    `addons/simpleassetplacer/core/keybinds.gd`, `addons/simpleassetplacer/ui/asset_dock.gd`,
+    `addons/simpleassetplacer/plugin.gd`
+
+---
+
 ## [3.0.0] - 2026-09-26
 
 ### 🚀 Complete Rewrite — Version 3.0

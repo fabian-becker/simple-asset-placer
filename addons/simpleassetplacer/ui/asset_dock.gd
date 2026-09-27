@@ -21,8 +21,10 @@ RESPONSIBILITIES:
   tree), with engine thumbnails
 - Drag items into the 3D viewport using the standard "files" drag payload
   (the editor instantiates them natively)
-- Double-click places the asset on the ground plane under the mouse,
-  registered as an undoable action
+- Double-click / Enter asks the placement engine to spawn the asset under
+  the cursor: it is picked up there, so it can be transformed before being
+  confirmed; the "Keep placing" switch (or the keep-placing modifier while
+  confirming) places it and carries a fresh copy (keep-placing chain)
 """
 
 const ASSET_EXTENSIONS := ["tscn", "scn", "res", "tres", "glb", "gltf", "fbx", "obj", "dae"]
@@ -30,12 +32,15 @@ const MAX_ASSETS := 2000
 const NAME_CHARS := 46
 const DRAG_PREVIEW_SIZE := 64
 const DEFAULT_FOLDER := "res://"
-const PLACE_UNDO_ACTION := "Place Asset (Simple Asset Placer)"
+## Editor Settings id (under TransformKeybinds.SETTINGS_PREFIX) backing the
+## keep-placing switch, so the mode survives editor restarts.
+const KEEP_PLACING_SETTING := "keep_placing_mode"
 
 var _path_edit: LineEdit
 var _search_edit: LineEdit
 var _status_label: Label
 var _hint_label: Label
+var _keep_placing_check: CheckBox
 var _tree: AssetTree
 var _folder_dialog: EditorFileDialog
 var _folder_missing := false
@@ -48,8 +53,8 @@ var _tree_items: Dictionary = {}
 var _root_path := DEFAULT_FOLDER
 var _folder_icon: Texture2D
 
-## Injected by plugin.gd (EditorPlugin.get_undo_redo)
-var undo_redo: EditorUndoRedoManager
+## Injected by plugin.gd: owns placement (undoable) and keep-placing chains
+var placer: InlineTransformEngine
 
 
 ## UI Construction
@@ -122,6 +127,21 @@ func _ready() -> void:
 	_status_label = Label.new()
 	_status_label.add_theme_font_size_override("font_size", 11)
 	vbox.add_child(_status_label)
+
+	_keep_placing_check = CheckBox.new()
+	_keep_placing_check.text = "Keep placing"
+	var modifier_label := TransformKeybinds.get_action_label("keep_placing_modifier")
+	_keep_placing_check.tooltip_text = (
+		"Every confirm places the carried asset and carries a fresh copy of "
+		+ "the same asset - no need to hold the %s modifier. Escape / Right "
+		+ "Mouse ends the chain."
+	) % modifier_label
+	# FOCUS_NONE: the switch must never take keyboard focus, or the confirm
+	# keys (Enter/Space) would toggle it instead of placing the asset.
+	_keep_placing_check.focus_mode = Control.FOCUS_NONE
+	_keep_placing_check.set_pressed_no_signal(TransformKeybinds.get_bool(KEEP_PLACING_SETTING))
+	_keep_placing_check.toggled.connect(_on_keep_placing_toggled)
+	vbox.add_child(_keep_placing_check)
 
 	_hint_label = Label.new()
 	_hint_label.add_theme_font_size_override("font_size", 11)
@@ -373,77 +393,48 @@ func _make_drag_preview(icon: Texture2D) -> TextureRect:
 	return drag_root
 
 
-## Double-Click Placement
+## Double-Click Placement and Keep-Placing Switch
+
+
+func get_selected_asset_path() -> String:
+	"""Asset path of the selected tree row ("" for headers/none). The
+	placement engine reads this so keep-placing re-arms with the row that is
+	selected at the time of the confirm."""
+	if not _tree:
+		return ""
+	var item := _tree.get_selected()
+	if not item:
+		return ""
+	var path: Variant = item.get_metadata(0)
+	if (path is String) and not (path as String).is_empty():
+		return path
+	return ""
+
+
+func is_keep_placing_enabled() -> bool:
+	"""Switch state read by the placement engine: while the mode is on every
+	confirm places the carried asset and carries the next one, so the
+	keep-placing modifier does not have to be held. The editor setting behind
+	the switch is the single source of truth."""
+	return TransformKeybinds.get_bool(KEEP_PLACING_SETTING)
+
+
+func sync_keep_placing() -> void:
+	"""Re-read the setting behind the switch (manual Editor Settings edits)."""
+	if _keep_placing_check:
+		_keep_placing_check.set_pressed_no_signal(TransformKeybinds.get_bool(KEEP_PLACING_SETTING))
+
+
+func _on_keep_placing_toggled(pressed: bool) -> void:
+	TransformKeybinds.set_bool(KEEP_PLACING_SETTING, pressed)
 
 
 func _on_tree_item_activated() -> void:
-	var item := _tree.get_selected()
-	if not item:
+	if not placer:
 		return
-	var path: Variant = item.get_metadata(0)
-	if (path is String) and not (path as String).is_empty():
-		_place_asset(path)
-
-
-func _place_asset(path: String) -> void:
-	var scene_root := EditorInterface.get_edited_scene_root()
-	if not scene_root or not scene_root is Node3D:
-		return
-
-	var resource := load(path)
-	if not resource:
-		return
-
-	var node: Node3D = null
-	var instantiated: Node = null
-	if resource is PackedScene:
-		instantiated = resource.instantiate()
-	elif resource is Mesh:
-		var mesh_instance := MeshInstance3D.new()
-		mesh_instance.mesh = resource
-		instantiated = mesh_instance
-
-	node = instantiated as Node3D
-	if not node:
-		if instantiated:
-			instantiated.free()
-		return
-
-	var placement_position := _get_placement_position()
-	if not undo_redo:
-		node.free()
-		return
-
-	undo_redo.create_action(PLACE_UNDO_ACTION)
-	undo_redo.add_do_method(scene_root, "add_child", node)
-	undo_redo.add_do_method(node, "set_owner", scene_root)
-	undo_redo.add_do_property(node, "position", placement_position)
-	undo_redo.add_undo_method(scene_root, "remove_child", node)
-	undo_redo.commit_action()
-
-	EditorInterface.get_selection().clear()
-	EditorInterface.get_selection().add_node(node)
-
-
-func _get_placement_position() -> Vector3:
-	var viewport := EditorInterface.get_editor_viewport_3d(0)
-	var camera: Camera3D = viewport.get_camera_3d() if viewport else null
-	if not viewport or not camera:
-		return Vector3.ZERO
-
-	var mouse_position := viewport.get_mouse_position()
-	if not viewport.get_visible_rect().has_point(mouse_position):
-		mouse_position = viewport.get_visible_rect().get_center()
-
-	var origin := camera.project_ray_origin(mouse_position)
-	var direction := camera.project_ray_normal(mouse_position)
-	if direction.y < -0.001:
-		var t := -origin.y / direction.y
-		return origin + direction * t
-
-	var fallback := origin + direction * 10.0
-	fallback.y = 0.0
-	return fallback
+	var path := get_selected_asset_path()
+	if not path.is_empty():
+		placer.place_asset(path)
 
 
 ## Cleanup

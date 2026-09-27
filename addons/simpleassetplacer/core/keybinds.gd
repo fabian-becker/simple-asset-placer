@@ -43,6 +43,7 @@ const KEY_DEFAULTS := {
 	"fine_modifier": "CTRL",
 	"large_modifier": "ALT",
 	"reverse_modifier": "SHIFT",
+	"keep_placing_modifier": "SHIFT",
 }
 
 ## Value id -> default value
@@ -53,6 +54,13 @@ const VALUE_DEFAULTS := {
 	# 0 follows the editor's snap increment, > 0 is a fixed increment,
 	# < 0 disables snapping for the mouse-follow placement.
 	"snap_increment": 0.0,
+}
+
+## Bool id -> default value
+const TOGGLE_DEFAULTS := {
+	# Keep-placing mode: written by the dock switch, read by the placement
+	# engine - keeps the chain running without holding the modifier key.
+	"keep_placing_mode": false,
 }
 
 
@@ -78,6 +86,11 @@ static func register_defaults() -> void:
 		if not editor_settings.has_setting(setting):
 			editor_settings.set_setting(setting, VALUE_DEFAULTS[id])
 			editor_settings.set_initial_value(setting, VALUE_DEFAULTS[id], false)
+	for id in TOGGLE_DEFAULTS:
+		var setting := "%s/%s" % [SETTINGS_PREFIX, id]
+		if not editor_settings.has_setting(setting):
+			editor_settings.set_setting(setting, TOGGLE_DEFAULTS[id])
+			editor_settings.set_initial_value(setting, TOGGLE_DEFAULTS[id], false)
 
 
 ## Key Resolution (cached)
@@ -131,6 +144,11 @@ static func is_reverse_modifier_held() -> bool:
 	return is_action_pressed("reverse_modifier")
 
 
+static func is_keep_placing_modifier_held() -> bool:
+	"""Held while confirming to keep placing (keep-placing chain)."""
+	return is_action_pressed("keep_placing_modifier")
+
+
 static func get_action_key(action: String) -> Key:
 	"""Resolved Key code for an action (KEY_NONE when unresolvable)."""
 	if not _cache_valid:
@@ -158,6 +176,23 @@ static func get_number(id: String) -> float:
 	if editor_settings and editor_settings.has_setting(setting):
 		return float(editor_settings.get_setting(setting))
 	return float(VALUE_DEFAULTS.get(id, 0.0))
+
+
+## Toggle Access
+
+
+static func get_bool(id: String) -> bool:
+	var editor_settings := EditorInterface.get_editor_settings()
+	var setting := "%s/%s" % [SETTINGS_PREFIX, id]
+	if editor_settings and editor_settings.has_setting(setting):
+		return bool(editor_settings.get_setting(setting))
+	return bool(TOGGLE_DEFAULTS.get(id, false))
+
+
+static func set_bool(id: String, value: bool) -> void:
+	var editor_settings := EditorInterface.get_editor_settings()
+	if editor_settings:
+		editor_settings.set_setting("%s/%s" % [SETTINGS_PREFIX, id], value)
 
 
 ## Key Event Matching (used to keep editor shortcuts from firing while transforming)

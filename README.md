@@ -26,14 +26,16 @@ Both the dock and the keyboard transforms are configured in Godot's **Editor Set
 - **Grouped list view** — folders become collapsible group headers, assets listed underneath; one clean view for the whole project
 - **Engine-native thumbnails** — previews come from Godot's own `EditorResourcePreview` pipeline
 - **Live search** — filter assets across the entire tree as you type
-- **Native drag & drop** — drag a thumbnail straight into the 3D viewport; double-click places it in front of the camera with full undo
+- **Native drag & drop** — drag a thumbnail straight into the 3D viewport; double-clicking one instead spawns it under the cursor already picked up, so you can transform it into place before confirming (full undo)
 - **Plays well with the FileSystem dock** — assets dragged from the regular FileSystem get the same inline transform support
+- **Keep-placing switch** — a checkbox below the asset count that keeps the keep-placing mode on, so a row of assets goes down without holding any modifier
 
 ### ⌨️ Inline Keyboard Transforms
 
 - **Works while dragging** — grab an asset (dock *or* FileSystem) and rotate/move/scale the preview before you drop it
 - **Pick-up mode** — press `Tab` to grab the current selection; it follows your cursor over surfaces, transform it in place, confirm with `Tab`/`Enter`/`Left Mouse` or cancel with `Esc`/`Right Mouse`
 - **Quick duplicate stamp** — press `V` to duplicate the selection and carry the copies; click to stamp them, `V` again to stamp the placed copies, `Esc`/`Right Mouse` to discard
+- **Keep placing** — double-click an asset to spawn one instance you can transform; hold `Shift` while confirming (or turn on the `Keep placing` switch in the dock) and the placed instance stays where it is while a fresh copy of the same asset is carried straight away, so every `Enter`/`Left Mouse` lays down the next piece and wall rows go down with one click each (each placed instance is its own undo step). Confirming a picked-up scene node the same way carries duplicates of it instead, so copies can be stamped from the tree as well
 - **Surface snapping** — the carried nodes raycast onto the surface under your cursor; grid snapping follows the editor's **Use Snap** toggle (hold `Ctrl` to temporarily invert, exactly like the engine)
 - **Snap to floor** — `PageDown` while carrying drops the selection onto the surface below and locks its height until you adjust height again
 - **Self-collision safe** — the pick-up ray ignores the carried node's own collision (including CSG collision bodies)
@@ -53,12 +55,20 @@ Both the dock and the keyboard transforms are configured in Godot's **Editor Set
 ### Place an asset
 
 ```
+Drag & drop:
 1. Drag a thumbnail from the Asset Browser dock (or a file from the FileSystem
    dock) into the 3D viewport.
 2. The preview follows your cursor and snaps to surfaces.
 3. While dragging, transform it inline:  X/Y/Z rotate · W/A/S/D move ·
    Q/E height · L/K scale · Ctrl/Alt/Shift change step size & direction.
 4. Release the mouse to place the asset (one undo step).
+
+Double-click (transform it before placing):
+1. Double-click a thumbnail in the Asset Browser dock - one instance is
+   spawned under the cursor and picked up.
+2. Move the cursor and use the same transform keys to put it in place.
+3. Confirm with Enter or Left Mouse (one undo step); Esc or Right Mouse
+   drops the instance again.
 ```
 
 ### Move & transform placed nodes
@@ -81,6 +91,36 @@ Both the dock and the keyboard transforms are configured in Godot's **Editor Set
 3. Esc or Right Mouse deletes the copies and restores the original.
 ```
 
+### Keep placing (place a row of assets)
+
+```
+1. Double-click an asset in the Asset Browser dock (or drag one into the
+   viewport and hold Shift as you release) - one instance is spawned under
+   your cursor and picked up, ready to transform.
+2. Move it into place: it follows the cursor over surfaces, snaps to the
+   grid and takes the usual transform keys like any picked-up selection.
+3. Turn on the "Keep placing" switch below the asset count - or hold Shift
+   while confirming - and every confirm keeps placing: the instance stays
+   where it is and a fresh copy of the same asset is carried immediately.
+4. Confirm each next piece with Enter or Left Mouse: walls line up piece by
+   piece with one click each. Turn the switch off (or release Shift on a
+   confirm) to stop, or press Esc / Right Mouse to drop the piece still
+   under the cursor - every already-placed piece stays. Each one is its own
+   undo step.
+```
+
+The switch is the same mode as holding Shift, just sticky: it survives editor
+restarts (it is stored as the `keep_placing_mode` editor setting) and applies
+to drag & drop too, so a dropped asset starts a chain without any modifier
+held.
+
+Keep placing also covers existing scene nodes: pick one up (Tab), transform it
+and confirm with Shift held (or the switch on) - the node stays where you
+confirmed it and a duplicate of it is carried, so the next confirms stamp
+copies of it just like the quick-duplicate chain (pick up several nodes and the
+whole group is stamped at once). Esc / Right Mouse drops the carried duplicates
+and leaves the confirmed nodes alone.
+
 ## ⌨️ Controls
 
 All keys and step sizes live in **Editor → Editor Settings → `simple_asset_placer/`** — every action below is remappable.
@@ -99,6 +139,8 @@ All keys and step sizes live in **Editor → Editor Settings → `simple_asset_p
 | Fine modifier | `Ctrl` | Small step (also inverts the snap toggle, engine-style) |
 | Large modifier | `Alt` | Big step |
 | Reverse modifier | `Shift` | Inverts the direction of the current key |
+| Keep-placing modifier | `Shift` | Held while confirming: place the carried instance and carry a fresh copy of the same asset |
+| Keep placing switch | — | Dock checkbox below the asset count: the same mode as the keep-placing modifier, but sticky (stored as the `keep_placing_mode` editor setting) |
 
 ## ⚙️ Editor Settings
 
@@ -107,6 +149,7 @@ Everything is configured under **Editor → Editor Settings → `simple_asset_pl
 - **Keys** — one setting per action (`*_key`), free-text like `Tab`, `Enter`, `F`, `PageDown`, or single letters
 - **Steps** — `rotation_step_degrees` (15°), `move_step` (0.5), `scale_step_factor` (0.1) and their fine/large variants
 - **Snap** — `snap_increment`: `0` follows the editor's **Use Snap** toggle with its grid size, `> 0` forces a fixed increment, `< 0` disables snapping while carrying
+- **Modes** — `keep_placing_mode`: the dock's **Keep placing** switch, so the mode can also be toggled from here (the dock follows this setting)
 
 ## 📁 Supported Asset Formats
 
@@ -120,7 +163,7 @@ Assets must contain mesh or scene data to produce a draggable instance. Surface 
 
 ```
 addons/simpleassetplacer/
-├── plugin.cfg                     # Plugin metadata (version 3.0.0)
+├── plugin.cfg                     # Plugin metadata (version 3.1.0)
 ├── plugin.gd                      # Plugin entry point
 ├── core/
 │   ├── inline_transform.gd        # Inline keyboard transform engine
@@ -152,6 +195,6 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 **Author**: IIFabixn (aka LuckyTeapot)
 **Repository**: [github.com/IIFabixn/simple-asset-placer](https://github.com/IIFabixn/simple-asset-placer)
-**Version**: 3.0.0 · **Godot**: 4.x (developed and tested on 4.7) · **License**: MIT
+**Version**: 3.1.0 · **Godot**: 4.x (developed and tested on 4.7) · **License**: MIT
 
 Thanks to the Godot Engine team and community, and to everyone who tested and gave feedback.
